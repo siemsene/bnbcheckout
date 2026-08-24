@@ -1,0 +1,39 @@
+{
+  "assets_dir": "public/assets",
+  "asset_library": "C:/dev/classroom-assets-kit/kenney",
+  "_asset_library_note": "Path to an unzipped CC0 library (e.g. Kenney All-in-1). Run scripts/index_library.py on it once, then find_asset.py searches it automatically. Leave empty if unused.",
+  "default_preset": "house",
+  "presets": {
+    "house": {
+      "style": "Flat vector-style illustration with soft rounded geometry, clean bold outlines of uniform weight, generous negative space, and a warm friendly tone. Slight paper-grain texture. No gradients meshes, no drop shadows, no photorealism.",
+      "palette": [
+        "#1B3B6F",
+        "#FFB800",
+        "#E8F1F8",
+        "#2E9E6B",
+        "#D94F4F",
+        "#2B2B2B"
+      ],
+      "notes": "Designed for undergraduate teaching apps. Optimistic but not childish."
+    },
+    "diagram-support": {
+      "style": "Minimal monochrome line illustration, single stroke weight, no fill, technical-drawing feel.",
+      "palette": [
+        "#1B3B6F",
+        "#FFFFFF"
+      ],
+      "notes": "For decorative marks that sit beside real hand-authored diagrams without competing with them."
+    },
+    "lab": {
+      "style": "Clean semi-realistic scientific illustration, muted naturalistic colour, subtle cel shading, textbook-plate feel.",
+      "palette": [
+        "#2F4858",
+        "#33658A",
+        "#86BBD8",
+        "#F6AE2D",
+        "#F26419"
+      ],
+      "notes": "For biology / chemistry / physics course apps."
+    }
+  }
+}

@@ -1,0 +1,39 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+serviceAccount*.json
+*-service-account*.json
+*firebase-adminsdk*.json
+
+# Dependencies / build
+node_modules/
+dist/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+emulator-data/
+functions/lib/
+
+# Content pipeline intermediates (regenerable from Course/Algebra_1.pdf)
+data/raw/
+
+# Misc
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+.asset_cache/
+
+# (added by vercel link; kept, with the example-file exception re-applied below)
+.vercel
+.env*
+!.env.example
