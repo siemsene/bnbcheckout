@@ -151,6 +151,11 @@ export const useSimStore = create<SimStore>((set, get) => ({
 
 const pendingActions: Action[] = [];
 
+// Dev-only hook so tests and debugging can reach the store from the console.
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__simStore = useSimStore;
+}
+
 type Set = (fn: (s: SimStore) => Partial<SimStore>) => void;
 
 function ingestEvents(sim: SimState, events: SimEvent[], set: Set, _get: () => SimStore) {

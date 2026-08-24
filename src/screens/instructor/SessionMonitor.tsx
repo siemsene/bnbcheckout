@@ -11,6 +11,40 @@ import {
 } from '../../firebase/data';
 import { LeaderboardPanel } from '../student/LeaderboardPanel';
 import { ConstraintPanel } from './ConstraintPanel';
+import { subscribePlayers, type PlayerDoc } from '../../firebase/data';
+
+function ExportCsvButton({ sessionId }: { sessionId: string }) {
+  const [players, setPlayers] = useState<PlayerDoc[]>([]);
+  useEffect(() => subscribePlayers(sessionId, setPlayers), [sessionId]);
+
+  function exportCsv() {
+    const rows = [
+      ['name', 'phase', 'finished', 'finish_sim_minute', 'pct_complete', 'avg_utilization', 'score'],
+      ...players.map((p) => [
+        p.name,
+        p.phase,
+        String(p.finished),
+        p.finishSimMinute != null ? String(Math.round(p.finishSimMinute * 10) / 10) : '',
+        (p.pctComplete * 100).toFixed(1),
+        (p.utilizationAvg * 100).toFixed(1),
+        String(p.score),
+      ]),
+    ];
+    const csv = rows.map((r) => r.map((c) => `"${c.replaceAll('"', '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'checkout-rush-results.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <button className="btn-ghost" style={{ marginTop: 10 }} onClick={exportCsv}>
+      ⬇ Export results as CSV
+    </button>
+  );
+}
 
 export function SessionMonitor() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -68,6 +102,7 @@ export function SessionMonitor() {
       <section className="panel" style={{ padding: 16 }}>
         <h2 style={{ marginBottom: 10 }}>Leaderboard</h2>
         <LeaderboardPanel sessionId={session.id} revealScatter={session.status === 'ended'} />
+        <ExportCsvButton sessionId={session.id} />
       </section>
 
       <ConstraintPanel />

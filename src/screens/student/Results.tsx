@@ -2,9 +2,10 @@
 // (real dataviz-conformant chart lands in the polish phase), and what-you-
 // discovered recap.
 
-import { CHARACTERS, CHAR_IDS } from '../../engine/content';
 import { summarize } from '../../engine/scoring';
 import { useSimStore } from '../../state/simStore';
+import { UtilizationChart } from '../../components/charts/UtilizationChart';
+import { Celebration } from './Celebration';
 
 export function Results({
   onPlayAgain,
@@ -20,6 +21,7 @@ export function Results({
 
   return (
     <div className="overlay">
+      {finished && <Celebration />}
       <div className="overlay-card">
         {finished && (
           <img
@@ -61,7 +63,7 @@ export function Results({
         </div>
 
         <h3 style={{ margin: '10px 0' }}>Who was busy when</h3>
-        <UtilizationSparklines utilization={r.utilization} />
+        <UtilizationChart utilization={r.utilization} />
 
         <button className="btn-big" onClick={onPlayAgain} style={{ marginTop: 18 }}>
           {playAgainLabel}
@@ -80,44 +82,3 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Minimal placeholder visualization; replaced by the dataviz-skill chart. */
-function UtilizationSparklines({ utilization }: { utilization: number[][] }) {
-  return (
-    <div style={{ display: 'grid', gap: 6, textAlign: 'left' }}>
-      {CHAR_IDS.map((c, i) => {
-        const series = utilization[i] ?? [];
-        const avg =
-          series.length > 0 ? series.reduce((a, b) => a + b, 0) / series.length : 0;
-        return (
-          <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 50, fontSize: '0.8rem', fontWeight: 600 }}>
-              {CHARACTERS[c].name}
-            </span>
-            <div
-              style={{
-                flex: 1,
-                height: 10,
-                background: 'var(--line)',
-                borderRadius: 5,
-                overflow: 'hidden',
-              }}
-              role="img"
-              aria-label={`${CHARACTERS[c].name} average utilization ${Math.round(avg * 100)}%`}
-            >
-              <div
-                style={{
-                  width: `${avg * 100}%`,
-                  height: '100%',
-                  background: 'var(--accent)',
-                }}
-              />
-            </div>
-            <span style={{ fontSize: '0.8rem', width: 40, textAlign: 'right' }}>
-              {Math.round(avg * 100)}%
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}

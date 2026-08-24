@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { subscribePlayers, type PlayerDoc } from '../../firebase/data';
+import { ClassScatter } from '../../components/charts/ClassScatter';
 
 export function LeaderboardPanel({
   sessionId,
@@ -22,6 +23,12 @@ export function LeaderboardPanel({
 
   return (
     <div style={{ textAlign: 'left' }}>
+      {revealScatter && (
+        <div style={{ marginBottom: 16 }}>
+          <h3 style={{ marginBottom: 6 }}>Utilization vs completion time</h3>
+          <ClassScatter players={players} highlightId={highlightPlayerId} />
+        </div>
+      )}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--line)', textAlign: 'left' }}>
