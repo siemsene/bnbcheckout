@@ -6,7 +6,13 @@ import { CHARACTERS, CHAR_IDS } from '../../engine/content';
 import { summarize } from '../../engine/scoring';
 import { useSimStore } from '../../state/simStore';
 
-export function Results({ onPlayAgain }: { onPlayAgain: () => void }) {
+export function Results({
+  onPlayAgain,
+  playAgainLabel = 'Play again',
+}: {
+  onPlayAgain: () => void;
+  playAgainLabel?: string;
+}) {
   const sim = useSimStore((s) => s.sim);
   if (!sim) return null;
   const r = summarize(sim);
@@ -51,7 +57,7 @@ export function Results({ onPlayAgain }: { onPlayAgain: () => void }) {
         <UtilizationSparklines utilization={r.utilization} />
 
         <button className="btn-big" onClick={onPlayAgain} style={{ marginTop: 18 }}>
-          Play again
+          {playAgainLabel}
         </button>
       </div>
     </div>

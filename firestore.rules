@@ -1,8 +1,82 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Placeholder until Phase 3 — deny all client access.
-    match /{document=**} {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+    function isInstructor() {
+      return signedIn() && request.auth.token.instructor == true;
+    }
+
+    // Instructor accounts. Created client-side as 'pending'; approval happens
+    // server-side (approveInstructor), but admin-claim updates stay allowed.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.email == request.auth.token.email;
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // Join codes — resolved client-side for display only; written by functions.
+    match /sessionCodes/{code} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /sessions/{sid} {
+      allow read: if signedIn();
+      allow create: if isInstructor()
+        && request.resource.data.instructorUid == request.auth.uid;
+      allow update: if isInstructor()
+        && resource.data.instructorUid == request.auth.uid
+        && request.resource.data.instructorUid == request.auth.uid;
+      allow delete: if false;
+
+      // Name tickets — written only by the joinSession function.
+      match /names/{nameLower} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
+
+      match /players/{playerId} {
+        // Leaderboard is public to anyone signed in (incl. anonymous students).
+        allow read: if signedIn();
+        // Created only by the joinSession function.
+        allow create: if false;
+        // Owner may update their own summary; identity and seed are immutable
+        // and the sim clock can only move forward.
+        allow update: if signedIn()
+          && request.auth.uid == resource.data.uid
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.name == resource.data.name
+          && request.resource.data.seed == resource.data.seed
+          && request.resource.data.simMinute >= resource.data.simMinute;
+        allow delete: if false;
+
+        // Private per-player docs (checkpoint, result).
+        match /private/{doc} {
+          function playerUid() {
+            return get(/databases/$(database)/documents/sessions/$(sid)/players/$(playerId)).data.uid;
+          }
+          allow read: if signedIn()
+            && (request.auth.uid == playerUid() || isInstructor());
+          allow create, update: if signedIn()
+            && request.auth.uid == playerUid()
+            && request.resource.data.uid == request.auth.uid;
+          allow delete: if signedIn() && request.auth.uid == playerUid();
+        }
+      }
+    }
+
+    // Trigger Email extension queue — functions only, never clients.
+    match /mail/{id} {
       allow read, write: if false;
     }
   }

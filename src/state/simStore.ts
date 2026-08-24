@@ -26,8 +26,14 @@ export interface TickerEntry {
   kind: 'info' | 'done' | 'rework' | 'warn';
 }
 
-const TICKS_PER_REAL_SECOND = 8;
 const BUBBLE_MS = 4200;
+
+/** Sim speed: 8 ticks/real-second = 120 sim-min in 15 real minutes. A ?speed=
+ * URL param (practice mode only) overrides it for testing/demo purposes. */
+let ticksPerRealSecond = 8;
+export function setSimSpeed(tps: number) {
+  ticksPerRealSecond = Math.max(1, Math.min(240, tps));
+}
 
 interface SimStore {
   sim: SimState | null;
@@ -111,7 +117,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
     const { sim, phase, paused } = get();
     if (!sim || phase !== 'running' || paused || sim.outcome !== 'running') return;
 
-    tickRemainder += (realMs / 1000) * TICKS_PER_REAL_SECOND;
+    tickRemainder += (realMs / 1000) * ticksPerRealSecond;
     let ticks = Math.floor(tickRemainder);
     tickRemainder -= ticks;
     // Catch-up cap: recover fully from background-tab throttling (browsers

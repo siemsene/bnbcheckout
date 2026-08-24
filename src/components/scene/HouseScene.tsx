@@ -99,7 +99,7 @@ export function HouseScene() {
         })}
       {toasts.length > 0 && (
         <div style={{ position: 'absolute', top: 6, left: 0, right: 0, textAlign: 'center' }}>
-          {toasts.map((b) => (
+          {toasts.slice(-2).map((b) => (
             <div key={b.id} className="bubble toast" style={{ display: 'inline-block' }}>
               {b.text}
             </div>

@@ -252,7 +252,7 @@ function accrueWork(state: SimState, events: SimEvent[]) {
   const tick = state.tick;
   const eatDone = state.tasks['eat-breakfast'].status === 'done';
   const hangryActive = tick >= HANGRY_TICK && !eatDone;
-  if (hangryActive) bubble(state, events, undefined, 'hangry', true);
+  if (hangryActive) bubble(state, events, undefined, 'hangry'); // announced once
 
   for (const [taskId, task] of Object.entries(state.tasks)) {
     if (task.status !== 'open' || task.assignees.length === 0) continue;
