@@ -1,13 +1,13 @@
-// Live cutaway of the Airbnb, drawn over the painted backdrop. All
-// state-driven props (clean sparkles, cars, luggage, garbage) are positioned
-// from SimState; characters are chibi sprites tweened between room anchors.
+// Live cutaway of the Airbnb. Rooms crossfade from the messy backdrop to its
+// clean twin as cleaning work progresses; characters are chibi sprites with
+// task-specific tools and animations; all props derive from SimState.
 
-import { CHARACTERS, CHAR_IDS, TASK_BY_ID } from '../../engine/content';
-import { ACTIVITY_META, CHAR_META } from '../../content/charMeta';
+import { CHARACTERS, CHAR_IDS, PLAYER_CHAR, TASK_BY_ID } from '../../engine/content';
+import { ACTIVITY_META, CHAR_HINTS, CHAR_META } from '../../content/charMeta';
+import { ROOM_CLEAN_RECTS, SKILL_ANIM, TASK_TOOLS } from '../../content/taskMeta';
 import { useSimStore } from '../../state/simStore';
 import type { CharId, RoomId, SimState } from '../../engine/types';
 
-// Anchor points measured on house-cutaway.jpg (percent of image box).
 const ROOM_ANCHORS: Record<RoomId, { x: number; y: number }> = {
   bedroom1: { x: 18.5, y: 52 },
   bedroom2: { x: 39, y: 52 },
@@ -19,18 +19,12 @@ const ROOM_ANCHORS: Record<RoomId, { x: number; y: number }> = {
   outside: { x: 36, y: 97 },
 };
 
-// Overlay boxes for the "room is clean" sparkle badges.
-const ROOM_BADGES: Record<string, { x: number; y: number }> = {
-  'clean-bedroom-1': { x: 27, y: 30 },
-  'clean-bedroom-2': { x: 47, y: 30 },
-  'clean-bedroom-3': { x: 67, y: 30 },
-  'clean-bathroom': { x: 90, y: 30 },
-  'clean-living-room': { x: 34, y: 62 },
-  'tidy-kitchen': { x: 87, y: 62 },
-};
-
 function charRoom(sim: SimState, charId: CharId): RoomId {
   const c = sim.chars[charId];
+  // Sora on a nudge trip stands with her target.
+  if (charId === PLAYER_CHAR && sim.nudge) {
+    return charRoom(sim, sim.nudge.target);
+  }
   if (c.activity === 'toilet') return 'bathroom';
   if (c.activity === 'walkback') return 'outside';
   if (c.taskId) return TASK_BY_ID[c.taskId].room;
@@ -45,6 +39,8 @@ export function HouseScene() {
   if (!sim) return null;
 
   const done = (taskId: string) => sim.tasks[taskId].status === 'done';
+  const progress = (taskId: string) =>
+    Math.min(1, sim.tasks[taskId].workDone / sim.tasks[taskId].workRequired);
 
   const roomCounts: Partial<Record<RoomId, number>> = {};
   const positions: Record<CharId, { x: number; y: number }> = {} as never;
@@ -57,7 +53,6 @@ export function HouseScene() {
   }
 
   const toasts = bubbles.filter((b) => !b.charId);
-  const carsLoaded = done('load-cars');
 
   return (
     <section className="panel scene-wrap" aria-label="House view">
@@ -67,14 +62,33 @@ export function HouseScene() {
         alt="Cutaway view of the Airbnb: three bedrooms and a bathroom upstairs; living room, hall and kitchen downstairs; driveway in front"
       />
 
-      {/* clean-room badges — shape+text, not colour alone */}
-      {Object.entries(ROOM_BADGES).map(
-        ([taskId, pos]) =>
+      {/* rooms tidy up as their cleaning task progresses */}
+      {Object.entries(ROOM_CLEAN_RECTS).map(([taskId, [x0, y0, x1, y1]]) => {
+        const p = progress(taskId);
+        if (p <= 0.02) return null;
+        return (
+          <img
+            key={taskId}
+            className="scene-clean"
+            src="/assets/scene/house-clean.jpg"
+            alt=""
+            aria-hidden
+            style={{
+              clipPath: `inset(${y0}% ${100 - x1}% ${100 - y1}% ${x0}%)`,
+              opacity: p,
+            }}
+          />
+        );
+      })}
+
+      {/* ✨ badges once a room is fully done */}
+      {Object.entries(ROOM_CLEAN_RECTS).map(
+        ([taskId, [x0, y0, x1]]) =>
           done(taskId) && (
             <div
-              key={taskId}
+              key={`b-${taskId}`}
               className="room-badge"
-              style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+              style={{ left: `${(x0 + x1) / 2}%`, top: `${y0 + 5}%` }}
               role="img"
               aria-label={`${TASK_BY_ID[taskId].name} finished`}
             >
@@ -83,25 +97,33 @@ export function HouseScene() {
           ),
       )}
 
-      {/* driveway props */}
+      {/* driveway props — car-specific luggage */}
       {done('fetch-car-a') && (
         <img className="scene-prop" src="/assets/scene/car-a.png" alt="Car A in the driveway"
-          style={{ left: '58%', bottom: '0.5%', width: '13%' }} />
+          style={{ left: '55%', bottom: '0.5%', width: '13%' }} />
       )}
       {done('fetch-car-b') && (
         <img className="scene-prop" src="/assets/scene/car-b.png" alt="Car B in the driveway"
           style={{ left: '74%', bottom: '0.5%', width: '13%' }} />
       )}
-      {carsLoaded && (
-        <img className="scene-prop" src="/assets/scene/luggage-pile.png" alt="Luggage loaded by the cars"
-          style={{ left: '68%', bottom: '6%', width: '6%' }} />
+      {done('load-car-a') && (
+        <img className="scene-prop" src="/assets/scene/luggage-pile.png" alt="Luggage loaded on car A"
+          style={{ left: '58%', bottom: '7%', width: '5.5%' }} />
       )}
-      {!carsLoaded &&
-        (['pack-bag-1', 'pack-bag-2', 'pack-bag-3'] as const).filter(done).map((b, i) => (
-          <img key={b} className="scene-prop" src="/assets/scene/luggage-pile.png"
-            alt="Packed luggage waiting in the hall"
-            style={{ left: `${44 + i * 4}%`, top: '80%', width: '4.5%' }} />
-        ))}
+      {done('load-car-b') && (
+        <img className="scene-prop" src="/assets/scene/luggage-pile.png" alt="Luggage loaded on car B"
+          style={{ left: '77%', bottom: '7%', width: '5.5%' }} />
+      )}
+      {(['pack-bag-1', 'pack-bag-2'] as const).filter((b) => done(b) && !done('load-car-a')).map((b, i) => (
+        <img key={b} className="scene-prop" src="/assets/scene/luggage-pile.png"
+          alt="Packed luggage waiting in the hall"
+          style={{ left: `${43 + i * 4}%`, top: '80%', width: '4.5%' }} />
+      ))}
+      {done('pack-bag-3') && !done('load-car-b') && (
+        <img className="scene-prop" src="/assets/scene/luggage-pile.png"
+          alt="Packed luggage waiting in the hall"
+          style={{ left: '51%', top: '80%', width: '4.5%' }} />
+      )}
       {done('garbage') && (
         <img className="scene-prop" src="/assets/scene/garbage.png" alt="Garbage out at the curb"
           style={{ left: '3%', bottom: '1%', width: '7%' }} />
@@ -113,13 +135,22 @@ export function HouseScene() {
         const state = sim.chars[c];
         const act = ACTIVITY_META[state.activity];
         const pos = positions[c];
-        const moving = state.activity === 'walking' || state.activity === 'walkback';
+        const moving =
+          state.activity === 'walking' ||
+          state.activity === 'walkback' ||
+          (c === PLAYER_CHAR && sim.nudge != null);
+        const working = state.activity === 'working' && state.unavailableUntil <= sim.tick;
+        const tool = working && state.taskId ? TASK_TOOLS[state.taskId] : null;
+        const animClass =
+          working && state.taskId ? SKILL_ANIM[TASK_BY_ID[state.taskId].skill] : '';
+        const hints = CHAR_HINTS[c];
+        const tip = `${CHARACTERS[c].name} — ${act.label}\n＋ ${hints.strengths.join('\n＋ ')}\n− ${hints.watchouts.join('\n− ')}`;
         return (
           <button
             key={c}
-            className={`scene-char ${state.activity}`}
+            className={`scene-char ${state.activity} ${animClass}`}
             style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-            title={`${CHARACTERS[c].name} — ${act.label}`}
+            title={tip}
             aria-label={`${CHARACTERS[c].name} — ${act.label}`}
             onClick={() => {
               if (act.nudgeable) dispatch({ type: 'nudge', charId: c });
@@ -132,6 +163,11 @@ export function HouseScene() {
               style={state.activity === 'walkback' ? { scale: '-1 1' } : undefined}
             />
             <span className="scene-char-label">{CHARACTERS[c].name}</span>
+            {tool && (
+              <span className="scene-char-tool" aria-hidden>
+                {tool}
+              </span>
+            )}
             {act.icon && (
               <span className="scene-char-status" role="img" aria-label={act.label}>
                 {act.icon}

@@ -100,24 +100,22 @@ describe('precedence', () => {
     }
   });
 
-  it('load-cars unlocks with all bags + ANY one car', () => {
+  it('loading is car-specific: car A needs bags 1+2 and car A fetched', () => {
     const s = createRun(5, quiet);
-    for (const id of ['pack-bag-1', 'pack-bag-2', 'pack-bag-3']) {
+    for (const id of ['pack-bag-1', 'pack-bag-2']) {
       s.tasks[id].workDone = s.tasks[id].workRequired - 1;
     }
-    // Finish the three bags via work.
     run(s, 1, [{ type: 'assign', charId: 'sora', taskId: 'pack-bag-1' }]);
     run(s, 200);
     run(s, 1, [{ type: 'assign', charId: 'sora', taskId: 'pack-bag-2' }]);
     run(s, 200);
-    run(s, 1, [{ type: 'assign', charId: 'sora', taskId: 'pack-bag-3' }]);
-    run(s, 200);
-    expect(s.tasks['load-cars'].status).toBe('locked');
-    // One car arrives.
+    expect(s.tasks['load-car-a'].status).toBe('locked'); // no car yet
     run(s, 1, [{ type: 'assign', charId: 'kenji', taskId: 'fetch-car-a' }]);
     run(s, 2000);
     expect(s.tasks['fetch-car-a'].status).toBe('done');
-    expect(s.tasks['load-cars'].status).toBe('open');
+    expect(s.tasks['load-car-a'].status).toBe('open');
+    // Car B's load stays locked: bag 3 and snacks and car B are all missing.
+    expect(s.tasks['load-car-b'].status).toBe('locked');
   });
 });
 
@@ -355,11 +353,12 @@ describe('rework', () => {
 });
 
 describe('interruptions & nudge', () => {
-  it('a phone call stops work and a nudge ends it (costing Sora time)', () => {
+  it('a phone call stops work; a nudge means Sora walks over, chats, and walks back', () => {
     const events: ScheduledEvent[] = [
-      { at: 600, type: 'phone', charId: 'kenji', duration: 300 },
+      { at: 600, type: 'phone', charId: 'kenji', duration: 1200 },
     ];
     const s = createRun(59, { events });
+    s.tasks['strip-beds'].workRequired = 100000; // Sora's task must outlast the test
     run(s, 1, [
       { type: 'assign', charId: 'kenji', taskId: 'clean-living-room' },
       { type: 'assign', charId: 'sora', taskId: 'strip-beds' },
@@ -369,11 +368,36 @@ describe('interruptions & nudge', () => {
     const w0 = s.tasks['clean-living-room'].workDone;
     run(s, 50);
     expect(s.tasks['clean-living-room'].workDone).toBe(w0);
+
+    const stripBefore = s.tasks['strip-beds'].workDone;
     run(s, 1, [{ type: 'nudge', charId: 'kenji' }]);
+    // Not instant: Sora is walking over; Kenji still on the phone.
+    expect(s.nudge).not.toBeNull();
+    expect(s.chars.kenji.activity).toBe('oncall');
+    run(s, 45); // > NUDGE_WALK_TICKS
+    expect(s.nudge).toBeNull();
     expect(s.chars.kenji.activity).toBe('working');
-    expect(s.chars.sora.unavailableUntil).toBeGreaterThan(s.tick);
     run(s, 20);
     expect(s.tasks['clean-living-room'].workDone).toBeGreaterThan(w0);
+    // Sora produced nothing during the walk+chat, and needs to walk back.
+    expect(s.tasks['strip-beds'].workDone).toBe(stripBefore);
+    const stripMid = s.tasks['strip-beds'].workDone;
+    run(s, 80); // walk back + resume
+    expect(s.tasks['strip-beds'].workDone).toBeGreaterThan(stripMid);
+  });
+
+  it('a second nudge while Sora is en route is ignored', () => {
+    const events: ScheduledEvent[] = [
+      { at: 300, type: 'distraction', charId: 'mei', maxDuration: 2000 },
+      { at: 300, type: 'phone', charId: 'kenji', duration: 2000 },
+    ];
+    const s = createRun(62, { events });
+    run(s, 350);
+    run(s, 1, [{ type: 'nudge', charId: 'mei' }]);
+    const firstTarget = s.nudge?.target;
+    run(s, 1, [{ type: 'nudge', charId: 'kenji' }]);
+    expect(s.nudge?.target).toBe(firstTarget);
+    expect(s.chars.kenji.activity).toBe('oncall'); // untouched
   });
 
   it('distraction auto-expires after its max duration if never nudged', () => {

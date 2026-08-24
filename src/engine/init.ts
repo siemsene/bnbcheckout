@@ -79,6 +79,8 @@ export function createRun(seed: number, overrides?: RunOverrides): SimState {
     nextEventIdx: 0,
     rolls,
     walkthroughSurpriseDone: false,
+    nudge: null,
+    boostUntil: 0,
     emitted: {},
     utilization: CHAR_IDS.map(() => []),
     actionLog: [],
@@ -125,6 +127,34 @@ function rollSchedule(rng: ReturnType<typeof mulberry32>): ScheduledEvent[] {
       duration: T.taroToilet.durationMin * 60,
     });
   }
+
+  // Doorbell — the neighbor catches a pre-rolled victim
+  const doorbellCount = rng.int(T.doorbell.count[0], T.doorbell.count[1]);
+  for (let i = 0; i < doorbellCount; i++) {
+    events.push({
+      at: Math.round(rng.uniform(T.doorbell.windowMin[0], T.doorbell.windowMin[1]) * 60),
+      type: 'doorbell',
+      charId: rng.pick(['kenji', 'mei', 'taro', 'hana'] as const),
+      duration: Math.round(
+        rng.uniform(T.doorbell.durationMin[0], T.doorbell.durationMin[1]) * 60,
+      ),
+    });
+  }
+
+  // Cat, spill, music
+  events.push({
+    at: Math.round(rng.uniform(T.cat.windowMin[0], T.cat.windowMin[1]) * 60),
+    type: 'cat',
+  });
+  events.push({
+    at: Math.round(rng.uniform(T.spill.windowMin[0], T.spill.windowMin[1]) * 60),
+    type: 'spill',
+  });
+  events.push({
+    at: Math.round(rng.uniform(T.music.windowMin[0], T.music.windowMin[1]) * 60),
+    type: 'music',
+    duration: T.music.durationMin * 60,
+  });
 
   // Flavor
   const flavorCount = rng.int(T.flavor.count[0], T.flavor.count[1]);

@@ -53,7 +53,13 @@ export const BUBBLES: Record<string, BubbleSpec> = {
       'Emergency. Do NOT time me.',
     ],
   },
-  'nudged-sora': { lines: ['On it!'] },
+  'nudge-onmyway': {
+    charId: 'sora',
+    lines: ['Hold on, I’ll go get them…', 'Sora to the rescue. Again.'],
+  },
+  'nudge-already-fine': {
+    lines: ['…what? I was already working!', 'You walked all the way over for this?'],
+  },
   'nudged-kenji': { lines: ['Right — sorry, boss, gotta go. Family emergency. Sort of.'] },
   'nudged-mei': { lines: ['Hm? Oh! Right, checkout. Focus, Mei.'] },
   'nudged-taro': { lines: ['I was focused THE WHOLE TIME.'] },
@@ -91,25 +97,79 @@ export const BUBBLES: Record<string, BubbleSpec> = {
   'walkback-fetch-car-b': { lines: ['Fine. Walking back. Great use of my morning.'] },
   'walkback-buy-snacks': { lines: ['But… the snacks were right there…'] },
 
-  // --- Flavor ---------------------------------------------------------------
-  'flavor-cat': {
+  // --- New chaos ------------------------------------------------------------
+  doorbell: {
+    lines: [
+      'Oh no, it’s the neighbor. “Lovely weather—” here we go.',
+      'Doorbell! …It’s a story about their tomatoes. A long story.',
+    ],
+  },
+  'cat-mess': {
+    lines: ['THE CAT knocked the cushions everywhere and left. Majestic. Infuriating.'],
+  },
+  'cat-visit': {
     lines: ['A cat just walked in like it pays rent here.'],
   },
-  'flavor-neighbor': {
-    lines: ['The neighbor wants to chat about the weather. It is going to be long.'],
+  spill: {
+    lines: ['Pan flip gone wrong. The kitchen now has… texture. More dishes to do.'],
   },
+  music: {
+    lines: ['Road-trip playlist ON. Suddenly everyone has 10% more energy. 🎵'],
+  },
+  'no-vacuum': {
+    lines: [
+      'Someone else has the vacuum — I’ll sweep by hand… slowly.',
+      'ONE vacuum cleaner. FIVE people. Whose idea was this?',
+    ],
+  },
+  'no-shopping-list': {
+    lines: ['Buying snacks from memory… what does Taro even eat? This will take a while.'],
+  },
+  'found-shopping-list': {
+    lines: ['The shopping list was under the sofa! Snack run just got way easier.'],
+  },
+
+  // --- Flavor ---------------------------------------------------------------
   'flavor-wifi': {
     lines: ['The wifi died. Morale is shaken but we carry on.'],
+  },
+  'flavor-selfie': {
+    lines: ['Quick group selfie for the trip album! Okay okay, back to work.'],
+  },
+  'flavor-keys': {
+    lines: ['Brief panic: where are the house keys? …In the door. They were in the door.'],
   },
 };
 
 /** Idle chatter for ambient life; shown occasionally by the UI, not the engine. */
 export const AMBIENT: Partial<Record<CharId, string[]>> = {
-  sora: ['Okay team, we’ve got this.', 'Checklist. Checklist. Where’s the checklist.'],
-  kenji: ['I call shotgun. Wait, I’m driving.', 'Road trip playlist is READY.'],
-  mei: ['Breakfast is the most important meal of the checkout.'],
-  taro: ['I can carry all three bags. At once.', 'Never trusting street food again.'],
-  hana: ['This place was so cute. Five stars.', 'Anyone want to clean TOGETHER? Anyone?'],
+  sora: [
+    'Okay team, we’ve got this.',
+    'Checklist. Checklist. Where’s the checklist.',
+    'Two hours is PLENTY. Probably.',
+    'Remember: we lose the deposit if this place isn’t spotless.',
+  ],
+  kenji: [
+    'I call shotgun. Wait, I’m driving.',
+    'Road trip playlist is READY.',
+    'If my boss calls again I’m throwing my phone in the lake.',
+    'Did anyone see where I put the parking ticket?',
+  ],
+  mei: [
+    'Breakfast is the most important meal of the checkout.',
+    'That bird is back. Hello, bird.',
+    'I’m adding gummy sharks to the snack list. Non-negotiable.',
+  ],
+  taro: [
+    'I can carry all three bags. At once.',
+    'Never trusting street food again.',
+    'My stomach just made a sound I did not authorize.',
+  ],
+  hana: [
+    'This place was so cute. Five stars.',
+    'Anyone want to clean TOGETHER? Anyone?',
+    'Found ANOTHER sock. Whose is this??',
+  ],
 };
 
 export function bubbleText(textKey: string, tick: number): string | null {

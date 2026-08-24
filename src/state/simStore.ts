@@ -5,8 +5,8 @@
 import { create } from 'zustand';
 import { createRun } from '../engine/init';
 import { applyOnly, step } from '../engine/step';
-import { TASK_BY_ID } from '../engine/content';
-import { bubbleText, BUBBLES } from '../content/bubbles';
+import { CHAR_IDS, TASK_BY_ID } from '../engine/content';
+import { AMBIENT, bubbleText, BUBBLES } from '../content/bubbles';
 import type { Action, CharId, SimEvent, SimState } from '../engine/types';
 
 export type GamePhase = 'lobby' | 'planning' | 'running' | 'done';
@@ -133,6 +133,26 @@ export const useSimStore = create<SimStore>((set, get) => ({
       if (sim.outcome !== 'running') break;
     }
     ingestEvents(sim, allEvents, set, get);
+
+    // Ambient chatter: someone pipes up every couple of sim-minutes (UI-only
+    // flavor — never engine state, so replays are unaffected).
+    if (sim.outcome === 'running' && sim.tick > 0 && sim.tick % 150 < ticks) {
+      const slot = Math.floor(sim.tick / 150);
+      const charId = CHAR_IDS[slot % CHAR_IDS.length];
+      const lines = AMBIENT[charId];
+      const busyState = sim.chars[charId].activity;
+      if (lines && (busyState === 'working' || busyState === 'idle')) {
+        const text = lines[slot % lines.length];
+        const now0 = Date.now();
+        set((s) => ({
+          bubbles: [
+            ...s.bubbles.filter((b) => b.charId !== charId),
+            { id: nextId++, charId, text, until: now0 + BUBBLE_MS },
+          ].slice(-8),
+        }));
+      }
+    }
+
     const now = Date.now();
     set((s) => ({
       version: s.version + 1,

@@ -2,6 +2,30 @@
 
 import type { Activity, CharId } from '../engine/types';
 
+/** Hover-tooltip hints: enough to plan with, without spelling out exact numbers. */
+export const CHAR_HINTS: Record<CharId, { strengths: string[]; watchouts: string[] }> = {
+  sora: {
+    strengths: ['Solid at everything', 'The only one who can nudge the others'],
+    watchouts: ['No driving license', 'Nudging someone means walking over — her own task waits'],
+  },
+  kenji: {
+    strengths: ['Has a license — fastest driver', 'Quick with heavy-ish jobs'],
+    watchouts: ['Terrible cook', 'His boss keeps calling; he stops working until nudged'],
+  },
+  mei: {
+    strengths: ['Brilliant cook', 'Knows everyone’s snacks — fast shopper'],
+    watchouts: ['No license', 'Drifts off (birds, phone) and needs nudging'],
+  },
+  taro: {
+    strengths: ['Very strong — luggage, garbage, loading', 'Focused when working alone'],
+    watchouts: ['No license', 'Noticeably slower when sharing a task', 'That street food last night… bathroom emergencies happen'],
+  },
+  hana: {
+    strengths: ['Meticulous cleaner', 'Has a license', 'Thrives working WITH someone'],
+    watchouts: ['Sluggish when left alone', 'Cleans so thoroughly she finds forgotten items — expect repacking'],
+  },
+};
+
 export const CHAR_META: Record<
   CharId,
   { color: string; short: string; glyph: string; ref: string; front: string; walk: string }

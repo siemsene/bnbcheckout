@@ -1,7 +1,9 @@
-// One task row: icon, name, progress, assignees, drop target for chips.
+// One task row: icon, name, estimate + crew size, progress, assignees with
+// live productivity, drop target for chips.
 
 import { useDroppable } from '@dnd-kit/core';
 import { TASK_BY_ID } from '../../engine/content';
+import { personalMult } from '../../engine/step';
 import { useSimStore } from '../../state/simStore';
 import { CharacterChip } from './CharacterChip';
 import { TaskIcon } from './TaskIcon';
@@ -66,10 +68,25 @@ export function TaskCard({ taskId }: { taskId: string }) {
             <span title="rework!" aria-label="needs rework"> ↩</span>
           )}
         </div>
+        <div className="task-est" aria-label={`Estimated about ${def.baseMinutes} minutes; ${
+          def.minWorkers === 5 ? 'needs all five' : `up to ${def.maxWorkers} ${def.maxWorkers === 1 ? 'person' : 'people'}`
+        }`}>
+          ~{def.baseMinutes}′ ·{' '}
+          {def.minWorkers === 5 ? 'all 5 together' : `${'👤'.repeat(def.maxWorkers)} up to ${def.maxWorkers}`}
+          {def.travel && ' · 🚶 away from the house'}
+          {task.assignees.length > 1 && def.minWorkers !== 5 && (
+            <span title="Combined output of the crew vs one person — more hands help, but not linearly">
+              {' '}· crew output ×
+              {(def.multiWorkerFactors ?? [0, 1, 1.7, 2.1])[
+                Math.min(task.assignees.length, (def.multiWorkerFactors ?? [0, 1, 1.7, 2.1]).length - 1)
+              ].toFixed(1)}
+            </span>
+          )}
+        </div>
       </div>
       <div className="task-assignees">
         {task.assignees.map((c) => (
-          <CharacterChip key={c} charId={c} />
+          <CharacterChip key={c} charId={c} mult={personalMult(sim, c)} />
         ))}
         {task.status === 'open' && task.assignees.length === 0 && (
           <span style={{ fontSize: '0.75rem', color: 'var(--ink-soft)' }}>

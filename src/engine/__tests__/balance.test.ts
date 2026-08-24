@@ -49,10 +49,10 @@ function smartStrategy(s: SimState): Action[] {
   }
   const prefs: Record<string, string[]> = {
     mei: ['make-breakfast', 'buy-snacks', 'clean-bedroom-2', 'pack-bag-2', 'tidy-kitchen'],
-    kenji: ['fetch-car-a', 'fetch-car-b', 'pack-bag-1', 'clean-bedroom-1', 'garbage'],
+    kenji: ['fetch-car-a', 'fetch-car-b', 'pack-bag-1', 'clean-bedroom-1', 'load-car-a', 'garbage'],
     hana: ['clean-bathroom', 'clean-bedroom-3', 'clean-bedroom-1', 'tidy-kitchen', 'fetch-car-b'],
-    taro: ['clean-living-room', 'pack-bag-3', 'load-cars', 'garbage', 'clean-bedroom-3'],
-    sora: ['strip-beds', 'pack-bag-1', 'clean-bedroom-1', 'clean-bedroom-2', 'buy-snacks', 'final-walkthrough'],
+    taro: ['clean-living-room', 'pack-bag-3', 'load-car-a', 'load-car-b', 'garbage', 'clean-bedroom-3'],
+    sora: ['strip-beds', 'pack-bag-1', 'clean-bedroom-1', 'clean-bedroom-2', 'buy-snacks', 'load-car-b', 'final-walkthrough'],
   };
   for (const c of CHAR_IDS) {
     const ch = s.chars[c];

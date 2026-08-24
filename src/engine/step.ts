@@ -14,12 +14,17 @@ import {
   HANGRY_TICK,
   LEARNING_RAMP_TICKS,
   LEARNING_START_FRACTION,
-  NUDGE_COST_TICKS,
+  MUSIC_BOOST,
+  NO_LIST_MULT,
+  NUDGE_CHAT_TICKS,
+  NUDGE_WALK_TICKS,
   PLAYER_CHAR,
   REPACK_EXTRA_SECONDS,
   SIM_DEADLINE_TICKS,
   TASK_BY_ID,
+  TASKS,
   TRANSIT_TICKS,
+  VACUUM_PENALTY,
   WALKBACK_FRACTION,
   WALKTHROUGH_SURPRISE_EXTRA_SECONDS,
   WALKTHROUGH_SURPRISE_THRESHOLD,
@@ -42,6 +47,7 @@ export function step(state: SimState, actions: Action[] = []): StepResult {
 
   for (const action of actions) applyAction(state, action, events);
   fireScheduledEvents(state, events);
+  resolveNudge(state, events);
   endExpiredInterruptions(state);
   accrueWork(state, events);
   refreshUnlocks(state);
@@ -71,16 +77,24 @@ function applyAction(state: SimState, action: Action, events: SimEvent[]) {
 
   if (action.type === 'nudge') {
     const target = state.chars[action.charId];
-    if (target.activity === 'distracted' || target.activity === 'oncall') {
-      target.activity = target.taskId ? 'working' : 'idle';
-      target.unavailableUntil = tick;
-      bubble(state, events, action.charId, `nudged-${action.charId}`, true);
-      // Nudging costs the player a moment of their own work.
-      const sora = state.chars[PLAYER_CHAR];
-      sora.unavailableUntil = Math.max(sora.unavailableUntil, tick + NUDGE_COST_TICKS);
-    } else if (target.activity === 'toilet') {
+    if (action.charId === PLAYER_CHAR) return;
+    if (target.activity === 'toilet') {
       bubble(state, events, action.charId, 'nudge-toilet-futile');
+      state.actionLog.push({ tick, action });
+      return;
     }
+    if (state.nudge) return; // Sora is already on her way to someone
+    if (target.activity !== 'distracted' && target.activity !== 'oncall') return;
+
+    // Sora walks over, has a word, then walks back to whatever she was doing.
+    state.nudge = { target: action.charId, arriveAt: tick + NUDGE_WALK_TICKS };
+    const sora = state.chars[PLAYER_CHAR];
+    if (sora.activity === 'working' || sora.activity === 'idle') sora.activity = 'walking';
+    sora.unavailableUntil = Math.max(
+      sora.unavailableUntil,
+      tick + NUDGE_WALK_TICKS + NUDGE_CHAT_TICKS,
+    );
+    bubble(state, events, PLAYER_CHAR, 'nudge-onmyway', true);
     state.actionLog.push({ tick, action });
     return;
   }
@@ -105,7 +119,12 @@ function applyAction(state: SimState, action: Action, events: SimEvent[]) {
   char.taskId = action.taskId;
   // Characters in the middle of an interruption stay interrupted; they will
   // start walking to the task once it ends (handled in endExpiredInterruptions).
-  if (char.activity === 'idle' || char.activity === 'working' || char.activity === 'walking' || char.activity === 'walkback') {
+  if (
+    char.activity === 'idle' ||
+    char.activity === 'working' ||
+    char.activity === 'walking' ||
+    char.activity === 'walkback'
+  ) {
     char.activity = 'walking';
   }
   task.arriveAt[action.charId] = Math.max(tick, char.unavailableUntil) + TRANSIT_TICKS;
@@ -123,6 +142,22 @@ function applyAction(state: SimState, action: Action, events: SimEvent[]) {
   }
   if (def.owners && !def.owners.includes(action.charId) && def.nonOwnerMult) {
     bubble(state, events, action.charId, `stranger-bag-${action.charId}`);
+  }
+  if (
+    action.taskId === 'buy-snacks' &&
+    state.tasks['clean-living-room'].status !== 'done'
+  ) {
+    bubble(state, events, action.charId, 'no-shopping-list');
+  }
+  if (def.equipment === 'vacuum') {
+    const others = TASKS.filter(
+      (t) =>
+        t.equipment === 'vacuum' &&
+        t.id !== action.taskId &&
+        state.tasks[t.id].status === 'open' &&
+        state.tasks[t.id].assignees.length > 0,
+    );
+    if (others.length > 0) bubble(state, events, action.charId, 'no-vacuum');
   }
 }
 
@@ -195,7 +230,47 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
             taskId: 'clean-bathroom',
             textKey: 'rework-bathroom',
           });
+          refreshLocksAfterRework(state, 'clean-bathroom');
         }
+        break;
+      }
+      case 'doorbell': {
+        const c = state.chars[ev.charId];
+        if (c.activity === 'toilet' || c.activity === 'oncall') break;
+        c.activity = 'distracted'; // stuck at the door until nudged (or it ends)
+        c.unavailableUntil = tick + ev.duration;
+        bubble(state, events, ev.charId, 'doorbell', true);
+        break;
+      }
+      case 'cat': {
+        const living = state.tasks['clean-living-room'];
+        if (living.status === 'done') {
+          living.status = 'open';
+          living.workDone = living.workRequired * 0.85;
+          living.reworkCount++;
+          events.push({
+            type: 'rework',
+            tick,
+            taskId: 'clean-living-room',
+            textKey: 'cat-mess',
+          });
+          refreshLocksAfterRework(state, 'clean-living-room');
+        } else {
+          bubble(state, events, undefined, 'cat-visit', true);
+        }
+        break;
+      }
+      case 'spill': {
+        const kitchen = state.tasks['tidy-kitchen'];
+        if (kitchen.status !== 'done') {
+          kitchen.workRequired += 3 * 60;
+          bubble(state, events, undefined, 'spill', true);
+        }
+        break;
+      }
+      case 'music': {
+        state.boostUntil = tick + ev.duration;
+        bubble(state, events, undefined, 'music', true);
         break;
       }
       case 'flavor':
@@ -205,23 +280,58 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
   }
 }
 
+/** A completed successor may need to re-lock… we keep it simple: completed
+ * tasks stay done; only *locked* tasks re-check. Reopening a pred therefore
+ * never cascades — but tasks that were open purely because this pred was done
+ * must re-lock if they haven't started. */
+function refreshLocksAfterRework(state: SimState, predId: string) {
+  for (const t of TASKS) {
+    if (!t.preds?.includes(predId)) continue;
+    const ts = state.tasks[t.id];
+    if (ts.status === 'open' && ts.workDone === 0 && ts.assignees.length === 0) {
+      ts.status = 'locked';
+    }
+  }
+}
+
+function resolveNudge(state: SimState, events: SimEvent[]) {
+  const n = state.nudge;
+  if (!n || state.tick < n.arriveAt) return;
+  const target = state.chars[n.target];
+  if (target.activity === 'distracted' || target.activity === 'oncall') {
+    target.activity = target.taskId ? 'working' : 'idle';
+    target.unavailableUntil = state.tick;
+    bubble(state, events, n.target, `nudged-${n.target}`, true);
+  } else {
+    bubble(state, events, n.target, 'nudge-already-fine', true);
+  }
+  // Sora heads back to her own task (or the hall).
+  const sora = state.chars[PLAYER_CHAR];
+  if (sora.taskId) {
+    state.tasks[sora.taskId].arriveAt[PLAYER_CHAR] =
+      state.tick + NUDGE_CHAT_TICKS + NUDGE_WALK_TICKS;
+    sora.activity = 'walking';
+  } else {
+    sora.activity = 'idle';
+  }
+  state.nudge = null;
+}
+
 function endExpiredInterruptions(state: SimState) {
   const tick = state.tick;
   for (const id of CHAR_IDS) {
     const c = state.chars[id];
     if (
-      (c.activity === 'oncall' || c.activity === 'distracted' || c.activity === 'toilet' || c.activity === 'walkback') &&
+      (c.activity === 'oncall' ||
+        c.activity === 'distracted' ||
+        c.activity === 'toilet' ||
+        c.activity === 'walkback') &&
       c.unavailableUntil <= tick
     ) {
       if (c.taskId) {
-        // Walk (back) to the task if not yet arrived, else resume.
         const task = state.tasks[c.taskId];
         const arrive = task.arriveAt[id] ?? tick;
-        if (arrive > tick) {
-          c.activity = 'walking';
-        } else {
-          c.activity = 'working';
-        }
+        c.activity = arrive > tick ? 'walking' : 'working';
       } else {
         c.activity = 'idle';
       }
@@ -229,7 +339,7 @@ function endExpiredInterruptions(state: SimState) {
     // Walkers arrive.
     if (c.activity === 'walking' && c.taskId) {
       const arrive = state.tasks[c.taskId].arriveAt[id] ?? tick;
-      if (arrive <= tick) c.activity = 'working';
+      if (arrive <= tick && c.unavailableUntil <= tick) c.activity = 'working';
     }
   }
 }
@@ -248,11 +358,66 @@ function contributes(state: SimState, charId: CharId): boolean {
   return true;
 }
 
+/** Which vacuum-equipment task currently holds the vacuum (first active one). */
+function vacuumHolder(state: SimState): string | null {
+  for (const t of TASKS) {
+    if (t.equipment !== 'vacuum') continue;
+    const ts = state.tasks[t.id];
+    if (ts.status === 'open' && ts.assignees.some((c) => contributes(state, c))) {
+      return t.id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Personal effectiveness multiplier for a character on their current task —
+ * skill × ownership × learning ramp × social × hangry × music × equipment/list
+ * penalties. Excludes the team-size factor (that's team-level). Also used by
+ * the UI to show live productivity. Returns null when unassigned.
+ */
+export function personalMult(state: SimState, charId: CharId): number | null {
+  const c = state.chars[charId];
+  if (!c.taskId) return null;
+  const def = TASK_BY_ID[c.taskId];
+  const task = state.tasks[c.taskId];
+  if (def.requiresLicense && !CHARACTERS[charId].license) return 0;
+  if (!contributes(state, charId)) return 0;
+
+  const charDef = CHARACTERS[charId];
+  let m = charDef.skillMult[def.skill] ?? 1.0;
+  if (def.owners) {
+    if (def.owners.includes(charId)) m *= def.ownerMult ?? 1;
+    else m *= def.nonOwnerMult ?? 1;
+  }
+  if (!def.travel) {
+    const arrived = task.arriveAt[charId] ?? state.tick;
+    const onTask = Math.max(0, state.tick - arrived);
+    m *=
+      LEARNING_START_FRACTION +
+      (1 - LEARNING_START_FRACTION) * Math.min(1, onTask / LEARNING_RAMP_TICKS);
+  }
+  const n = task.assignees.filter((x) => contributes(state, x)).length;
+  if (n > 1 && charDef.pairedMult) m *= charDef.pairedMult;
+  if (n === 1 && charDef.aloneMult) m *= charDef.aloneMult;
+
+  const eatDone = state.tasks['eat-breakfast'].status === 'done';
+  if (state.tick >= HANGRY_TICK && !eatDone && !c.fed) m *= HANGRY_MULT;
+  if (state.tick < state.boostUntil) m *= MUSIC_BOOST;
+
+  if (def.equipment === 'vacuum' && vacuumHolder(state) !== c.taskId) m *= VACUUM_PENALTY;
+  if (c.taskId === 'buy-snacks' && state.tasks['clean-living-room'].status !== 'done') {
+    m *= NO_LIST_MULT;
+  }
+  return m;
+}
+
 function accrueWork(state: SimState, events: SimEvent[]) {
   const tick = state.tick;
   const eatDone = state.tasks['eat-breakfast'].status === 'done';
-  const hangryActive = tick >= HANGRY_TICK && !eatDone;
-  if (hangryActive) bubble(state, events, undefined, 'hangry'); // announced once
+  if (tick >= HANGRY_TICK && !eatDone) {
+    bubble(state, events, undefined, 'hangry'); // announced once
+  }
 
   for (const [taskId, task] of Object.entries(state.tasks)) {
     if (task.status !== 'open' || task.assignees.length === 0) continue;
@@ -269,26 +434,7 @@ function accrueWork(state: SimState, events: SimEvent[]) {
 
     let rate = 0;
     for (const charId of workers) {
-      const charDef = CHARACTERS[charId];
-      let m = charDef.skillMult[def.skill] ?? 1.0;
-      if (def.owners) {
-        if (def.owners.includes(charId)) m *= def.ownerMult ?? 1;
-        else m *= def.nonOwnerMult ?? 1;
-      }
-      // Learning curve (skipped for travel tasks).
-      if (!def.travel) {
-        const arrived = task.arriveAt[charId] ?? tick;
-        const onTask = Math.max(0, tick - arrived);
-        m *=
-          LEARNING_START_FRACTION +
-          (1 - LEARNING_START_FRACTION) * Math.min(1, onTask / LEARNING_RAMP_TICKS);
-      }
-      // Social preferences.
-      if (n > 1 && charDef.pairedMult) m *= charDef.pairedMult;
-      if (n === 1 && charDef.aloneMult) m *= charDef.aloneMult;
-      // Hunger.
-      if (hangryActive && !state.chars[charId].fed) m *= HANGRY_MULT;
-      rate += m * share;
+      rate += (personalMult(state, charId) ?? 0) * share;
     }
 
     task.workDone += rate;
@@ -326,6 +472,9 @@ function completeTask(
   if (taskId === 'eat-breakfast') {
     for (const c of CHAR_IDS) state.chars[c].fed = true;
   }
+  if (taskId === 'clean-living-room') {
+    bubble(state, events, undefined, 'found-shopping-list');
+  }
 
   // Cleaning may uncover a forgotten item -> repack somebody's bag.
   const bagId = FIND_ITEM_TASKS[taskId] ? state.rolls.foundItemBag[taskId] : undefined;
@@ -340,6 +489,7 @@ function completeTask(
       bag.workRequired += REPACK_EXTRA_SECONDS;
       if (bag.status === 'done') {
         bag.status = 'open';
+        refreshLocksAfterRework(state, bagId);
       }
       bag.reworkCount++;
       events.push({ type: 'rework', tick, taskId: bagId, textKey: `found-item-${taskId}` });

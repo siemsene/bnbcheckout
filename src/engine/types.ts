@@ -35,6 +35,8 @@ export interface TaskDef {
   /** At least one of these must be done (combined with preds). */
   predsAny?: string[];
   skill: Skill;
+  /** Shared equipment: only one task using it runs at full speed at a time. */
+  equipment?: 'vacuum';
   /** Travel tasks: no learning ramp; abandoning loses progress and costs a walk-back. */
   travel?: boolean;
   /** Only characters with a driving license can contribute. */
@@ -68,6 +70,10 @@ export type ScheduledEvent =
   | { at: number; type: 'phone'; charId: CharId; duration: number }
   | { at: number; type: 'distraction'; charId: CharId; maxDuration: number }
   | { at: number; type: 'toilet'; charId: CharId; duration: number }
+  | { at: number; type: 'doorbell'; charId: CharId; duration: number }
+  | { at: number; type: 'cat' }
+  | { at: number; type: 'spill' }
+  | { at: number; type: 'music'; duration: number }
   | { at: number; type: 'flavor'; textKey: string };
 
 export interface PreRolls {
@@ -145,6 +151,10 @@ export interface SimState {
   rolls: PreRolls;
   /** True once the walkthrough surprise has fired (it fires at most once). */
   walkthroughSurpriseDone: boolean;
+  /** Active nudge trip: Sora is walking over to snap someone out of it. */
+  nudge: { target: CharId; arriveAt: number } | null;
+  /** Someone put music on — everyone works a little faster until this tick. */
+  boostUntil: number;
   /** Bubble textKeys already emitted (dedupe). */
   emitted: Record<string, true>;
   /** [charIndex][simMinute] = fraction of that minute spent busy, appended every 60 ticks. */

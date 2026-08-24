@@ -16,8 +16,18 @@ export const TRANSIT_TICKS = 30;
 /** Fraction of time-spent-outbound a travel abandon costs as walk-back. */
 export const WALKBACK_FRACTION = 0.6;
 
-/** Sora is busy this long when nudging someone. */
-export const NUDGE_COST_TICKS = 30;
+/** Nudging = Sora walks over, has a word, and walks back. */
+export const NUDGE_WALK_TICKS = 40;
+export const NUDGE_CHAT_TICKS = 20;
+
+/** Only one vacuum cleaner: concurrent vacuum-tasks beyond the first run slower. */
+export const VACUUM_PENALTY = 0.55;
+
+/** Buying snacks without the shopping list (found under the sofa) is slower. */
+export const NO_LIST_MULT = 0.6;
+
+/** Music-on boost. */
+export const MUSIC_BOOST = 1.1;
 
 /** Everyone unfed works at this rate from HANGRY_TICK until breakfast is eaten. */
 export const HANGRY_TICK = 60 * 60;
@@ -126,6 +136,7 @@ export const TASKS: TaskDef[] = [
     maxWorkers: 1,
     preds: ['strip-beds'],
     skill: 'cleaning',
+    equipment: 'vacuum',
     owners: ['sora', 'kenji'],
     ownerMult: 1.3,
     room: 'bedroom1',
@@ -138,6 +149,7 @@ export const TASKS: TaskDef[] = [
     maxWorkers: 1,
     preds: ['strip-beds'],
     skill: 'cleaning',
+    equipment: 'vacuum',
     owners: ['mei'],
     ownerMult: 1.3,
     room: 'bedroom2',
@@ -150,6 +162,7 @@ export const TASKS: TaskDef[] = [
     maxWorkers: 1,
     preds: ['strip-beds'],
     skill: 'cleaning',
+    equipment: 'vacuum',
     owners: ['taro', 'hana'],
     ownerMult: 1.3,
     room: 'bedroom3',
@@ -176,10 +189,11 @@ export const TASKS: TaskDef[] = [
   {
     id: 'clean-living-room',
     name: 'Clean living room',
-    blurb: 'Cushions, board games, and a suspicious number of mugs.',
+    blurb: 'Cushions, board games, and a suspicious number of mugs. Wasn’t the shopping list around here somewhere?',
     baseMinutes: 12,
     maxWorkers: 2,
     skill: 'cleaning',
+    equipment: 'vacuum',
     room: 'living',
   },
   {
@@ -251,24 +265,32 @@ export const TASKS: TaskDef[] = [
     room: 'outside',
   },
   {
-    id: 'load-cars',
-    name: 'Load luggage into the cars',
-    blurb: 'Needs packed bags and at least one car out front. Strong arms help.',
-    baseMinutes: 12,
-    maxWorkers: 3,
-    preds: ['pack-bag-1', 'pack-bag-2', 'pack-bag-3'],
-    predsAny: ['fetch-car-a', 'fetch-car-b'],
+    id: 'load-car-a',
+    name: 'Load car A (Sora, Kenji & Mei’s bags)',
+    blurb: 'Their three-person luggage puzzle only fits car A one way. Needs the bags packed and car A out front. Strong arms help.',
+    baseMinutes: 9,
+    maxWorkers: 2,
+    preds: ['pack-bag-1', 'pack-bag-2', 'fetch-car-a'],
     skill: 'heavy',
     room: 'outside',
-    multiWorkerFactors: [0, 1, 1.7, 1.9],
+  },
+  {
+    id: 'load-car-b',
+    name: 'Load car B (Taro & Hana’s bags + the snacks)',
+    blurb: 'The big bags and the cooler go in the wagon. Needs that luggage packed, snacks bought, and car B out front.',
+    baseMinutes: 9,
+    maxWorkers: 2,
+    preds: ['pack-bag-3', 'buy-snacks', 'fetch-car-b'],
+    skill: 'heavy',
+    room: 'outside',
   },
   {
     id: 'garbage',
     name: 'Take out garbage & recycling',
-    blurb: 'The kitchen produces most of it — no point going before it’s tidy.',
+    blurb: 'Kitchen and bathroom produce most of it — no point going before both are done.',
     baseMinutes: 8,
     maxWorkers: 2,
-    preds: ['tidy-kitchen'],
+    preds: ['tidy-kitchen', 'clean-bathroom'],
     skill: 'heavy',
     room: 'outside',
   },
@@ -294,7 +316,8 @@ export const TASKS: TaskDef[] = [
       'fetch-car-a',
       'fetch-car-b',
       'buy-snacks',
-      'load-cars',
+      'load-car-a',
+      'load-car-b',
       'garbage',
     ],
     skill: 'general',
@@ -321,9 +344,17 @@ export const EVENT_TUNING = {
   kenjiPhone: { firstMin: [8, 14], gapMin: [10, 14], durationMin: [3, 5], count: 6 },
   meiDistraction: { firstMin: [5, 10], gapMin: [8, 12], maxDurationMin: 8, count: 8 },
   taroToilet: { windowMin: [15, 100], durationMin: 4, count: [2, 3] },
+  /** The neighbor rings; whoever answers is stuck chatting until nudged. */
+  doorbell: { windowMin: [12, 95], durationMin: [3, 4], count: [1, 2] },
+  /** A cat wanders in; if the living room was already clean, it un-cleans a bit. */
+  cat: { windowMin: [20, 105], count: 1 },
+  /** Cooking spill: extra dishes for tidy-kitchen (only while it still matters). */
+  spill: { windowMin: [10, 55], count: 1 },
+  /** Someone puts the road-trip playlist on: short whole-team boost. */
+  music: { windowMin: [25, 90], durationMin: 6, count: 1 },
   flavor: {
     count: [2, 3],
     windowMin: [10, 110],
-    textKeys: ['flavor-cat', 'flavor-neighbor', 'flavor-wifi'],
+    textKeys: ['flavor-wifi', 'flavor-selfie', 'flavor-keys'],
   },
 } as const;

@@ -82,16 +82,8 @@ const PATHS: Record<string, { title: string; el: React.ReactNode }> = {
       </>
     ),
   },
-  'load-cars': {
-    title: 'Load the cars',
-    el: (
-      <>
-        <rect {...STROKE} x="4" y="12" width="7" height="6" rx="1" />
-        <rect {...STROKE} x="8" y="6" width="6" height="6" rx="1" />
-        <path {...STROKE} d="M15 15h5m-2.5-2.5V15m0 0v2.5" />
-      </>
-    ),
-  },
+  'load-car-a': { title: 'Load car A', el: loadCar('A') },
+  'load-car-b': { title: 'Load car B', el: loadCar('B') },
   garbage: {
     title: 'Take out garbage',
     el: (
@@ -129,6 +121,19 @@ function bag() {
     <>
       <rect {...STROKE} x="5" y="8" width="14" height="12" rx="2" />
       <path {...STROKE} d="M9 8V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v3M5 13h14" />
+    </>
+  );
+}
+
+function loadCar(label: string) {
+  return (
+    <>
+      <rect {...STROKE} x="3" y="11" width="7" height="7" rx="1" />
+      <rect {...STROKE} x="6" y="5" width="6" height="6" rx="1" />
+      <path {...STROKE} d="M13 15h7m-3.5-3.5V15" />
+      <text x="14" y="9" fontSize="8" fontWeight="700" fill="currentColor">
+        {label}
+      </text>
     </>
   );
 }

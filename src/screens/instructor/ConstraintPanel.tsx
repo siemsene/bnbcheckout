@@ -91,6 +91,8 @@ export function ConstraintPanel() {
                   t.travel && 'travel: no learning curve, abandon = walk back & lose progress',
                   t.owners &&
                     `owner ${t.ownerMult}× (${t.owners.join(', ')})${t.nonOwnerMult ? `, others ${t.nonOwnerMult}×` : ''}`,
+                  t.equipment === 'vacuum' && 'needs the ONE vacuum (concurrent cleans run 0.55×)',
+                  t.id === 'buy-snacks' && '0.6× until the living room is cleaned (shopping list)',
                   t.skill !== 'general' && `skill: ${t.skill}`,
                 ]
                   .filter(Boolean)
@@ -104,8 +106,17 @@ export function ConstraintPanel() {
       <p style={{ fontSize: '0.85rem', color: 'var(--ink-soft)', marginTop: 10 }}>
         Global rules: durations vary ±~15% per run · learning curve 50→100% over 4
         sim-min on non-travel tasks · multi-worker efficiency 1 / 1.7 / 2.1 ·
-        skipping breakfast makes everyone 0.8× after minute 60 · the final
-        walkthrough sometimes finds one last forgotten item (40%).
+        skipping breakfast makes everyone 0.8× after minute 60 · nudging = Sora
+        walks over (~40s), chats (~20s), walks back — she produces nothing en
+        route · the final walkthrough sometimes finds one last forgotten item (40%).
+      </p>
+      <p style={{ fontSize: '0.85rem', color: 'var(--ink-soft)' }}>
+        Random events per run: Kenji’s boss calls (~6×) · Mei drifts off (~8×) ·
+        Taro’s emergencies (2–3×, re-dirty the bathroom) · doorbell neighbor
+        traps someone 3–4 min (1–2×) · a cat un-cleans a finished living room
+        (1×) · a cooking spill adds 3 min of dishes (1×) · the road-trip playlist
+        gives everyone +10% for 6 min (1×) · cleaning can uncover forgotten items
+        (Hana 65%, others 25%) that force repacking.
       </p>
     </details>
   );
