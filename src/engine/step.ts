@@ -51,6 +51,18 @@ export function step(state: SimState, actions: Action[] = []): StepResult {
   return { state, events };
 }
 
+/**
+ * Apply actions without advancing time — used during the planning freeze
+ * (tick stays 0) so players can stage assignments and still get discovery
+ * bubbles. Actions are logged normally, so replays stay deterministic.
+ */
+export function applyOnly(state: SimState, actions: Action[]): StepResult {
+  const events: SimEvent[] = [];
+  if (state.outcome !== 'running') return { state, events };
+  for (const action of actions) applyAction(state, action, events);
+  return { state, events };
+}
+
 // ---------------------------------------------------------------------------
 // Actions
 
