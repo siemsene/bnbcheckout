@@ -1,0 +1,21 @@
+{
+  "prompt_user": "All five friends from the reference images together celebrating in front of a loaded car by the vacation house: Sora with navy hair and sky-blue hoodie jumping happily, Kenji with rust-orange hair twirling car keys, petite Mei with brown bun throwing arms up, big Taro in mustard shirt giving thumbs up, Hana with long dark hair and pink cardigan clapping, morning light, joyful group scene, confetti of leaves in the air",
+  "prompt_sent": "All five friends from the reference images together celebrating in front of a loaded car by the vacation house: Sora with navy hair and sky-blue hoodie jumping happily, Kenji with rust-orange hair twirling car keys, petite Mei with brown bun throwing arms up, big Taro in mustard shirt giving thumbs up, Hana with long dark hair and pink cardigan clapping, morning light, joyful group scene, confetti of leaves in the air  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
+  "kind": "raster",
+  "preset": "ghibli",
+  "references": [
+    "public/assets/chars/sora-ref.png",
+    "public/assets/chars/kenji-ref.png",
+    "public/assets/chars/mei-ref.png",
+    "public/assets/chars/taro-ref.png",
+    "public/assets/chars/hana-ref.png"
+  ],
+  "alt": "All five friends celebrating in front of the loaded car outside the house",
+  "provider": "gemini",
+  "model": "gemini-3-pro-image",
+  "aspect": "16:9",
+  "size": "2K",
+  "file": "celebration.png",
+  "bytes": 3205915,
+  "created": "2026-08-24T15:00:02-0500"
+}

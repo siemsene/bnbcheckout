@@ -21,6 +21,13 @@ export function Results({
   return (
     <div className="overlay">
       <div className="overlay-card">
+        {finished && (
+          <img
+            src="/assets/scene/celebration.jpg"
+            alt="The five friends celebrating in front of the loaded car"
+            style={{ width: '100%', borderRadius: 14, marginBottom: 12 }}
+          />
+        )}
         <h1>{finished ? '🎉 Checkout complete!' : '⏰ Time’s up!'}</h1>
         <p style={{ fontSize: '1.1rem' }}>
           {finished ? (

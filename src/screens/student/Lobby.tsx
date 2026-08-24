@@ -19,7 +19,9 @@ export function Lobby() {
         <div className="char-cards">
           {CHAR_IDS.map((c) => (
             <div key={c} className="panel char-card" style={{ ['--chip-color' as string]: CHAR_META[c].color }}>
-              <div className="portrait" aria-hidden>{CHAR_META[c].glyph}</div>
+              <div className="portrait">
+                <img src={CHAR_META[c].ref} alt={`${CHARACTERS[c].name} character portrait`} />
+              </div>
               <strong>{CHARACTERS[c].name}</strong>
               <p>{CHARACTERS[c].intro}</p>
             </div>

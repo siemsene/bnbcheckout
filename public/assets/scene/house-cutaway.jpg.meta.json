@@ -1,0 +1,15 @@
+{
+  "prompt_user": "Cozy two-story vacation house shown in dollhouse cross-section cutaway view, straight-on elevation. UPPER FLOOR left to right: three small bedrooms with unmade beds, then a bathroom with tub and toilet at the far right. GROUND FLOOR left to right: living room with sofa and board games, central entrance hall with stairs, and a kitchen with a big dining table on the right. In front of the house along the bottom edge runs an empty paved driveway. Morning golden light, lived-in messy holiday clutter, walls in warm cream, sage green roof. Empty of people. Plain soft sky with a few clouds around the house \u2014 absolutely no color swatches, dots, circles, palettes, borders or graphic design elements anywhere, especially not in the sky",
+  "prompt_sent": "Cozy two-story vacation house shown in dollhouse cross-section cutaway view, straight-on elevation. UPPER FLOOR left to right: three small bedrooms with unmade beds, then a bathroom with tub and toilet at the far right. GROUND FLOOR left to right: living room with sofa and board games, central entrance hall with stairs, and a kitchen with a big dining table on the right. In front of the house along the bottom edge runs an empty paved driveway. Morning golden light, lived-in messy holiday clutter, walls in warm cream, sage green roof. Empty of people. Plain soft sky with a few clouds around the house \u2014 absolutely no color swatches, dots, circles, palettes, borders or graphic design elements anywhere, especially not in the sky  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
+  "kind": "raster",
+  "preset": "ghibli",
+  "references": [],
+  "alt": "Cutaway dollhouse view of the Airbnb: three bedrooms and bathroom upstairs, living room, hall and kitchen downstairs, driveway in front",
+  "provider": "gemini",
+  "model": "gemini-3-pro-image",
+  "aspect": "16:9",
+  "size": "2K",
+  "file": "house-cutaway.png",
+  "bytes": 3183418,
+  "created": "2026-08-24T14:57:53-0500"
+}

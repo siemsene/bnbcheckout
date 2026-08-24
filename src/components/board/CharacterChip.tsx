@@ -44,7 +44,7 @@ export function CharacterChip({ charId }: { charId: CharId }) {
       {...attributes}
     >
       <span className="chip-avatar" aria-hidden>
-        {meta.short}
+        <img src={meta.front} alt="" />
       </span>
       {CHARACTERS[charId].name}
       {act.icon && (
