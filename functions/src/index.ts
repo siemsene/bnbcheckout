@@ -7,6 +7,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 admin.initializeApp();
 
@@ -79,7 +80,7 @@ export const approveInstructor = onCall(async (request) => {
 
   await userRef.update({
     status: approve ? "approved" : "rejected",
-    approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    approvedAt: FieldValue.serverTimestamp(),
     approvedBy: request.auth!.uid,
   });
 
@@ -161,14 +162,14 @@ export const createSession = onCall(async (request) => {
         }
         tx.create(codeRef, {
           sessionId: sessionRef.id,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
         });
         tx.create(sessionRef, {
           code,
           instructorUid,
           title: title.trim(),
           status: "lobby",
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
           playerCount: 0,
           settings: { simDeadlineMin: 120, compression: 8 },
         });
@@ -268,7 +269,7 @@ export const joinSession = onCall(async (request) => {
     const playerRef = sessionRef.collection("players").doc();
     const playerId = playerRef.id;
     const createdAtMillis =
-      session.createdAt instanceof admin.firestore.Timestamp
+      session.createdAt instanceof Timestamp
         ? session.createdAt.toMillis()
         : 0;
     const seed = (fnv1a32(sessionId + nameLower) ^ createdAtMillis) >>> 0;
@@ -277,12 +278,12 @@ export const joinSession = onCall(async (request) => {
       playerId,
       displayName: name,
       uid,
-      claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+      claimedAt: FieldValue.serverTimestamp(),
     });
     tx.create(playerRef, {
       name,
       uid,
-      joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+      joinedAt: FieldValue.serverTimestamp(),
       phase: "lobby",
       simMinute: 0,
       pctComplete: 0,
@@ -291,10 +292,10 @@ export const joinSession = onCall(async (request) => {
       finishSimMinute: null,
       score: 0,
       seed,
-      lastWriteAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastWriteAt: FieldValue.serverTimestamp(),
     });
     tx.update(sessionRef, {
-      playerCount: admin.firestore.FieldValue.increment(1),
+      playerCount: FieldValue.increment(1),
     });
 
     return { sessionId, playerId, seed, rejoined: false };
@@ -305,7 +306,7 @@ export const joinSession = onCall(async (request) => {
 // 6. cleanupSessions — daily purge of sessions older than 30 days.
 // ---------------------------------------------------------------------------
 export const cleanupSessions = onSchedule("every 24 hours", async () => {
-  const cutoff = admin.firestore.Timestamp.fromMillis(
+  const cutoff = Timestamp.fromMillis(
     Date.now() - 30 * 24 * 60 * 60 * 1000
   );
 

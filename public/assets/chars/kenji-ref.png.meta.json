@@ -1,0 +1,17 @@
+{
+  "prompt_user": "Full-body character reference of Kenji, a tall relaxed early-twenties road-trip driver with messy rust-orange hair and sunglasses pushed up on his head, wearing an open terracotta-orange jacket over a cream shirt and dark trousers, spinning a car key ring on one finger, standing facing the viewer, single character, full body head to shoes",
+  "prompt_sent": "Full-body character reference of Kenji, a tall relaxed early-twenties road-trip driver with messy rust-orange hair and sunglasses pushed up on his head, wearing an open terracotta-orange jacket over a cream shirt and dark trousers, spinning a car key ring on one finger, standing facing the viewer, single character, full body head to shoes  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  Isolated on a fully transparent background, no backdrop, no drop shadow, no ground plane.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
+  "kind": "raster",
+  "preset": "ghibli",
+  "references": [
+    "public/assets/chars/sora-ref.png"
+  ],
+  "alt": "Kenji, a tall young man with messy rust-orange hair, terracotta jacket, holding car keys",
+  "provider": "gemini",
+  "model": "gemini-3-pro-image",
+  "aspect": "3:4",
+  "size": "2K",
+  "file": "kenji-ref.png",
+  "bytes": 2135530,
+  "created": "2026-08-24T14:45:04-0500"
+}

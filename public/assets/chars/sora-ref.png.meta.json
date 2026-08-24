@@ -1,0 +1,15 @@
+{
+  "prompt_user": "Full-body character reference of Sora, a friendly early-twenties trip organizer with short navy-blue hair, wearing a sky-blue hoodie and rolled-up jeans, holding a small blank notebook, standing relaxed facing the viewer, single character, full body visible head to shoes",
+  "prompt_sent": "Full-body character reference of Sora, a friendly early-twenties trip organizer with short navy-blue hair, wearing a sky-blue hoodie and rolled-up jeans, holding a small blank notebook, standing relaxed facing the viewer, single character, full body visible head to shoes  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  Isolated on a fully transparent background, no backdrop, no drop shadow, no ground plane.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
+  "kind": "raster",
+  "preset": "ghibli",
+  "references": [],
+  "alt": "Sora, a young person with short navy hair in a sky-blue hoodie, holding a notebook",
+  "provider": "gemini",
+  "model": "gemini-3-pro-image",
+  "aspect": "3:4",
+  "size": "2K",
+  "file": "sora-ref.png",
+  "bytes": 2567306,
+  "created": "2026-08-24T14:44:07-0500"
+}

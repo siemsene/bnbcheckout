@@ -2,8 +2,13 @@
   "assets_dir": "public/assets",
   "asset_library": "C:/dev/classroom-assets-kit/kenney",
   "_asset_library_note": "Path to an unzipped CC0 library (e.g. Kenney All-in-1). Run scripts/index_library.py on it once, then find_asset.py searches it automatically. Leave empty if unused.",
-  "default_preset": "house",
+  "default_preset": "ghibli",
   "presets": {
+    "ghibli": {
+      "style": "Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.",
+      "palette": ["#4A7C59", "#F6EFE2", "#D9884A", "#5B8DB8", "#C76B8E", "#A98A3F", "#33322E"],
+      "notes": "Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone."
+    },
     "house": {
       "style": "Flat vector-style illustration with soft rounded geometry, clean bold outlines of uniform weight, generous negative space, and a warm friendly tone. Slight paper-grain texture. No gradients meshes, no drop shadows, no photorealism.",
       "palette": [

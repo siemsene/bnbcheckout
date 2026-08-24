@@ -1,0 +1,17 @@
+{
+  "prompt_user": "Full-body character reference of Mei, a petite cheerful early-twenties home cook with warm brown hair in a loose bun, wearing a soft green apron over a cream dress, holding a wooden spoon, a small bird perched near her shoulder, standing facing the viewer, single character, full body head to shoes",
+  "prompt_sent": "Full-body character reference of Mei, a petite cheerful early-twenties home cook with warm brown hair in a loose bun, wearing a soft green apron over a cream dress, holding a wooden spoon, a small bird perched near her shoulder, standing facing the viewer, single character, full body head to shoes  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  Isolated on a fully transparent background, no backdrop, no drop shadow, no ground plane.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
+  "kind": "raster",
+  "preset": "ghibli",
+  "references": [
+    "public/assets/chars/sora-ref.png"
+  ],
+  "alt": "Mei, a petite young woman with a brown bun, green apron and wooden spoon, a little bird by her shoulder",
+  "provider": "gemini",
+  "model": "gemini-3-pro-image",
+  "aspect": "3:4",
+  "size": "2K",
+  "file": "mei-ref.png",
+  "bytes": 2240167,
+  "created": "2026-08-24T14:45:48-0500"
+}
