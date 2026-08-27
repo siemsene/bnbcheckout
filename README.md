@@ -29,7 +29,7 @@ Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
 | Simulation engine | `src/engine/` | Pure TS, deterministic: all randomness pre-rolled from a seed at `createRun`; `step()` advances 1 sim-second. Replayable from `(seed, actionLog)`. |
 | Scenario content | `src/engine/content.ts` | 18-task DAG, 5 characters, chaos-event tuning. The instructor constraint panel renders from the same tables. |
 | Game UI | `src/screens/student/` | Board (`@dnd-kit` drag-drop + click-to-assign fallback), painted house scene with sprites, HUD, results & charts. |
-| Firebase | `functions/`, `firestore.rules` | Callables: `joinSession` (name claim/rebind), `createSession`, `approveInstructor`, `setAdminClaim`; scheduled cleanup; Trigger-Email docs in `mail/`. |
+| Firebase | `functions/`, `firestore.rules` | Callables: `joinSession` (name claim/rebind), `createSession`, `markReady`, `sessionControl` (stage transitions), `getServerTime`, `approveInstructor`, `setAdminClaim`; scheduled cleanup; Trigger-Email docs in `mail/`. |
 | Tests | `src/engine/__tests__`, `rules-tests/` | Engine + balance in Vitest; security rules + full-emulator E2E (auth→approve→join→rejoin) in `rules-tests/`. |
 | Art pipeline | `scripts/`, `public/assets/` | Generated Ghibli-style set (see `*.meta.json` sidecars for prompts/refs). `scripts/strip_checker_bg.py` removes fake checkerboard backgrounds. |
 

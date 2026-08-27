@@ -10,7 +10,8 @@
   },
   "functions": {
     "source": "functions",
-    "codebase": "default"
+    "codebase": "default",
+    "predeploy": ["npm --prefix functions run build"]
   },
   "emulators": {
     "auth": { "port": 9099 },
