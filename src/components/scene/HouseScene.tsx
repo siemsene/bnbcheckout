@@ -19,6 +19,43 @@ const ROOM_ANCHORS: Record<RoomId, { x: number; y: number }> = {
   outside: { x: 36, y: 97 },
 };
 
+/** Loading a car is a shuttle: bags come out of the house one armful at a time.
+ * Each leg is a position swap that the .scene-char CSS transition walks out. */
+const LOAD_SHUTTLE: Record<
+  string,
+  { house: { x: number; y: number }; car: { x: number; y: number } }
+> = {
+  'load-car-a': { house: { x: 45, y: 93.5 }, car: { x: 60, y: 97 } },
+  'load-car-b': { house: { x: 48, y: 93.5 }, car: { x: 79, y: 97 } },
+};
+/** Sim-seconds per leg. Slightly longer than the 1.2s CSS transition at 1x, so
+ * each trip reads as walk-then-load rather than a continuous glide. */
+const SHUTTLE_LEG_TICKS = 12;
+
+const reducedMotion = () =>
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+function loadShuttle(sim: SimState, charId: CharId) {
+  const c = sim.chars[charId];
+  if (!c.taskId || c.activity !== 'working') return null;
+  if (c.unavailableUntil > sim.tick) return null;
+  const spec = LOAD_SHUTTLE[c.taskId];
+  if (!spec) return null;
+
+  // Reduced motion: stand at the car rather than teleporting back and forth.
+  const k = Math.max(0, sim.tasks[c.taskId].assignees.indexOf(charId));
+  if (reducedMotion()) return { ...spec.car, x: spec.car.x + k * 4, atCar: true };
+
+  // One full leg of phase per worker — the out-and-back cycle is two legs, so
+  // a pair is always on opposite legs: they pass each other mid-driveway
+  // instead of bunching up at the same end.
+  const phase = k * SHUTTLE_LEG_TICKS;
+  const atCar = Math.floor((sim.tick + phase) / SHUTTLE_LEG_TICKS) % 2 === 0;
+  const end = atCar ? spec.car : spec.house;
+  return { x: end.x + k * 4, y: end.y, atCar };
+}
+
 function charRoom(sim: SimState, charId: CharId): RoomId {
   const c = sim.chars[charId];
   // Sora on a nudge trip stands with her target.
@@ -44,7 +81,16 @@ export function HouseScene() {
 
   const roomCounts: Partial<Record<RoomId, number>> = {};
   const positions: Record<CharId, { x: number; y: number }> = {} as never;
+  const shuttling: Partial<Record<CharId, boolean>> = {};
+  const facingHouse: Partial<Record<CharId, boolean>> = {};
   for (const c of CHAR_IDS) {
+    const trip = loadShuttle(sim, c);
+    if (trip) {
+      positions[c] = { x: trip.x, y: trip.y };
+      shuttling[c] = true;
+      facingHouse[c] = !trip.atCar; // heading back for the next armful
+      continue;
+    }
     const room = charRoom(sim, c);
     const idx = roomCounts[room] ?? 0;
     roomCounts[room] = idx + 1;
@@ -135,20 +181,28 @@ export function HouseScene() {
         const state = sim.chars[c];
         const act = ACTIVITY_META[state.activity];
         const pos = positions[c];
+        const shuttle = shuttling[c] === true;
         const moving =
+          shuttle ||
           state.activity === 'walking' ||
           state.activity === 'walkback' ||
           (c === PLAYER_CHAR && sim.nudge != null);
         const working = state.activity === 'working' && state.unavailableUntil <= sim.tick;
         const tool = working && state.taskId ? TASK_TOOLS[state.taskId] : null;
+        // Car loaders waddle between house and car instead of playing the
+        // stationary lifting animation.
         const animClass =
-          working && state.taskId ? SKILL_ANIM[TASK_BY_ID[state.taskId].skill] : '';
+          !shuttle && working && state.taskId
+            ? SKILL_ANIM[TASK_BY_ID[state.taskId].skill]
+            : '';
         const hints = CHAR_HINTS[c];
         const tip = `${CHARACTERS[c].name} — ${act.label}\n＋ ${hints.strengths.join('\n＋ ')}\n− ${hints.watchouts.join('\n− ')}`;
         return (
           <button
             key={c}
-            className={`scene-char ${state.activity} ${animClass}${act.nudgeable ? ' needs-nudge' : ''}`}
+            className={`scene-char ${shuttle ? 'walking' : state.activity} ${animClass}${
+              act.nudgeable ? ' needs-nudge' : ''
+            }`}
             style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
             title={tip}
             aria-label={`${CHARACTERS[c].name} — ${act.label}`}
@@ -160,7 +214,11 @@ export function HouseScene() {
               className="scene-char-img"
               src={moving ? meta.walk : meta.front}
               alt=""
-              style={state.activity === 'walkback' ? { scale: '-1 1' } : undefined}
+              style={
+                state.activity === 'walkback' || facingHouse[c]
+                  ? { scale: '-1 1' }
+                  : undefined
+              }
             />
             <span className="scene-char-label">{CHARACTERS[c].name}</span>
             {tool && (
