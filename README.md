@@ -29,7 +29,7 @@ Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
 | Simulation engine | `src/engine/` | Pure TS, deterministic: all randomness pre-rolled from a seed at `createRun`; `step()` advances 1 sim-second. Replayable from `(seed, actionLog)`. |
 | Scenario content | `src/engine/content.ts` | 18-task DAG, 5 characters, chaos-event tuning. The instructor constraint panel renders from the same tables. |
 | Game UI | `src/screens/student/` | Board (`@dnd-kit` drag-drop + click-to-assign fallback), painted house scene with sprites, HUD, results & charts. |
-| Firebase | `functions/`, `firestore.rules` | Callables: `joinSession` (name claim/rebind), `createSession`, `markReady`, `sessionControl` (stage transitions), `getServerTime`, `approveInstructor`, `setAdminClaim`; scheduled cleanup; Trigger-Email docs in `mail/`. |
+| Firebase | `functions/`, `firestore.rules` | Callables: `joinSession` (name claim/rebind), `createSession`, `markReady`, `sessionControl` (stage transitions), `getServerTime`, `approveInstructor`, `setAdminClaim`; scheduled cleanup; notification email via the SMTP2GO REST API. |
 | Tests | `src/engine/__tests__`, `rules-tests/` | Engine + balance in Vitest; security rules + full-emulator E2E (auth→approve→join→rejoin) in `rules-tests/`. |
 | Art pipeline | `scripts/`, `public/assets/` | Generated Ghibli-style set (see `*.meta.json` sidecars for prompts/refs). `scripts/strip_checker_bg.py` removes fake checkerboard backgrounds. |
 
@@ -41,9 +41,18 @@ Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
    **Cloud Firestore**.
 2. Add a Web App in project settings; copy the config values into `.env` as
    `VITE_FIREBASE_*` (see `.env.example`).
-3. Install the **Trigger Email** extension (Firestore collection: `mail`),
-   entering your SMTP credentials (a Gmail app password or a free Brevo/SendGrid
-   account works).
+3. Notification email goes out through **SMTP2GO's REST API** (no extension to
+   install). Two things to set:
+   - `npx firebase-tools functions:secrets:set SMTP2GO_API_KEY` — paste the API
+     key from your SMTP2GO dashboard.
+   - `MAIL_SENDER` in `functions/.env.<projectId>` — the From address. SMTP2GO
+     only sends from a **domain you have verified with them**, so a bare
+     gmail.com address will be rejected. Example:
+     `MAIL_SENDER=no-reply@yourdomain.edu`
+
+   Email is optional: without the key everything still works, the functions just
+   log `SMTP2GO_API_KEY unset — skipping email` and you approve instructors
+   without a notification.
 4. Deploy: `npx firebase-tools login`, then
    `npx firebase-tools deploy` (hosting + firestore rules + functions).
 5. Bootstrap yourself as admin: register as an instructor in the app with

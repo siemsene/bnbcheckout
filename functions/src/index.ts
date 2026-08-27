@@ -10,6 +10,8 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { defineSecret, defineString } from "firebase-functions/params";
+import * as logger from "firebase-functions/logger";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import {
@@ -26,6 +28,78 @@ const db = getFirestore();
 const ADMIN_EMAIL = "siemsene@gmail.com";
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
+
+// --- Notification email (SMTP2GO REST API) ---------------------------------
+//
+// Set once with:  firebase functions:secrets:set SMTP2GO_API_KEY
+const SMTP2GO_API_KEY = defineSecret("SMTP2GO_API_KEY");
+/**
+ * The From address. SMTP2GO refuses to send unless this sits on a domain you
+ * have verified with them — a bare gmail.com address will NOT work, so set
+ * this in functions/.env.<projectId>. The default only exists so the emulator
+ * and unattended deploys don't stall on a prompt; SMTP2GO's rejection reason
+ * is logged by sendEmail if it is left wrong.
+ */
+const MAIL_SENDER = defineString("MAIL_SENDER", {
+  default: ADMIN_EMAIL,
+  description:
+    "From address for notification emails; must be a verified SMTP2GO sender.",
+});
+
+/**
+ * Fire off a notification. Deliberately never throws: these are courtesy
+ * emails, and an SMTP outage must not fail an instructor approval that has
+ * already been applied, nor cause a Firestore trigger to retry forever.
+ */
+async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  let apiKey = "";
+  try {
+    apiKey = SMTP2GO_API_KEY.value();
+  } catch {
+    // Secret not bound (e.g. the emulator) — fall through to the notice below.
+  }
+  const sender = MAIL_SENDER.value() || ADMIN_EMAIL;
+
+  if (!apiKey) {
+    logger.warn("SMTP2GO_API_KEY unset — skipping email", { to, subject });
+    return;
+  }
+
+  try {
+    const res = await fetch("https://api.smtp2go.com/v3/email/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Smtp2go-Api-Key": apiKey,
+      },
+      body: JSON.stringify({
+        sender,
+        to: [to],
+        subject,
+        html_body: html,
+      }),
+    });
+    if (!res.ok) {
+      logger.error("SMTP2GO rejected the send", {
+        to,
+        status: res.status,
+        body: await res.text().catch(() => "(unreadable)"),
+      });
+      return;
+    }
+    // SMTP2GO answers 200 with a per-request failure list, so check the body.
+    const data = (await res.json().catch(() => null)) as {
+      data?: { succeeded?: number; failures?: unknown[] };
+    } | null;
+    if (data?.data?.succeeded !== 1) {
+      logger.error("SMTP2GO accepted the request but sent nothing", { to, data });
+      return;
+    }
+    logger.info("notification sent", { to, subject });
+  } catch (err) {
+    logger.error("SMTP2GO request failed", { to, err: String(err) });
+  }
+}
 
 /** Default planning-stage cap, in minutes. Mirrors the client constant. */
 const DEFAULT_PLANNING_MINUTES = 5;
@@ -53,7 +127,7 @@ function hasRunStarted(session: DocumentData): boolean {
 // 1. onInstructorRegistered — notify the admin when a new instructor signs up.
 // ---------------------------------------------------------------------------
 export const onInstructorRegistered = onDocumentCreated(
-  "users/{uid}",
+  { document: "users/{uid}", secrets: [SMTP2GO_API_KEY] },
   async (event) => {
     const snap = event.data;
     if (!snap) return;
@@ -61,25 +135,24 @@ export const onInstructorRegistered = onDocumentCreated(
     const displayName = (data.displayName as string) ?? "(no name)";
     const email = (data.email as string) ?? "(no email)";
 
-    await db.collection("mail").add({
-      to: ADMIN_EMAIL,
-      message: {
-        subject: `Checkout Rush: instructor registration pending — ${displayName}`,
-        html:
-          `<p>A new instructor has registered and is awaiting approval.</p>` +
-          `<p><strong>Name:</strong> ${escapeHtml(displayName)}<br/>` +
-          `<strong>Email:</strong> ${escapeHtml(email)}<br/>` +
-          `<strong>UID:</strong> ${escapeHtml(event.params.uid)}</p>` +
-          `<p>Open the admin page to approve.</p>`,
-      },
-    });
+    await sendEmail(
+      ADMIN_EMAIL,
+      `Checkout Rush: instructor registration pending — ${displayName}`,
+      `<p>A new instructor has registered and is awaiting approval.</p>` +
+        `<p><strong>Name:</strong> ${escapeHtml(displayName)}<br/>` +
+        `<strong>Email:</strong> ${escapeHtml(email)}<br/>` +
+        `<strong>UID:</strong> ${escapeHtml(event.params.uid)}</p>` +
+        `<p>Open the admin page to approve.</p>`
+    );
   }
 );
 
 // ---------------------------------------------------------------------------
 // 2. approveInstructor — admin approves or rejects a pending instructor.
 // ---------------------------------------------------------------------------
-export const approveInstructor = onCall(async (request) => {
+export const approveInstructor = onCall(
+  { secrets: [SMTP2GO_API_KEY] },
+  async (request) => {
   if (request.auth?.token?.admin !== true) {
     throw new HttpsError("permission-denied", "Admin privileges required.");
   }
@@ -119,21 +192,20 @@ export const approveInstructor = onCall(async (request) => {
   const email = userData.email as string | undefined;
   if (email) {
     const outcome = approve ? "approved" : "rejected";
-    await db.collection("mail").add({
-      to: email,
-      message: {
-        subject: `Checkout Rush: your instructor account was ${outcome}`,
-        html: approve
-          ? `<p>Good news — your Checkout Rush instructor account has been approved. ` +
+    await sendEmail(
+      email,
+      `Checkout Rush: your instructor account was ${outcome}`,
+      approve
+        ? `<p>Good news — your Checkout Rush instructor account has been approved. ` +
             `Sign out and sign back in, then you can create sessions.</p>`
-          : `<p>Your Checkout Rush instructor registration was rejected. ` +
-            `If you believe this is a mistake, contact ${ADMIN_EMAIL}.</p>`,
-      },
-    });
+        : `<p>Your Checkout Rush instructor registration was rejected. ` +
+            `If you believe this is a mistake, contact ${ADMIN_EMAIL}.</p>`
+    );
   }
 
   return { uid, status: approve ? "approved" : "rejected" };
-});
+  }
+);
 
 // ---------------------------------------------------------------------------
 // 3. setAdminClaim — self-service bootstrap for the single known admin.
