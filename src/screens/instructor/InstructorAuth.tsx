@@ -1,7 +1,7 @@
 // Instructor register / login / pending-approval flow.
 
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../state/authStore';
 
 export function InstructorAuth() {
@@ -65,11 +65,19 @@ export function InstructorAuth() {
           ) : instructorStatus === 'rejected' ? (
             <p role="alert">Your instructor request was declined. Contact the site admin.</p>
           ) : (
-            <p>
-              Your email is verified. The site admin has been notified and will
-              approve your instructor account — you’ll get an email when it’s
-              ready.
-            </p>
+            <>
+              <p>
+                Your email is verified. The site admin has been notified and will
+                approve your instructor account — you’ll get an email when it’s
+                ready.
+              </p>
+              {/* The very first admin has nobody to approve them, and the
+                  bootstrap lives on a route nothing links to. */}
+              <p style={{ fontSize: '0.85rem', color: 'var(--ink-soft)' }}>
+                Are you the site admin? <Link to="/admin">Activate admin access →</Link>{' '}
+                then approve yourself there.
+              </p>
+            </>
           )}
           <div
             style={{

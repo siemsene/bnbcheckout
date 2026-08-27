@@ -55,10 +55,18 @@ Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
    without a notification.
 4. Deploy: `npx firebase-tools login`, then
    `npx firebase-tools deploy` (hosting + firestore rules + functions).
-5. Bootstrap yourself as admin: register as an instructor in the app with
-   **siemsene@gmail.com** (the admin email is fixed in
-   `functions/src/index.ts`), verify the email, then open `/admin` and press
-   "activate admin access".
+5. Bootstrap yourself. Admin and instructor are **separate claims** — you need
+   both, because `createSession` requires the instructor one:
+   1. Register at `/instructor/auth` with **siemsene@gmail.com** (the admin
+      email is fixed in `functions/src/index.ts`) and verify the email.
+      Firebase's verification mail often lands in Spam/Promotions; the screen
+      has a resend button.
+   2. Open `/admin` → **"I am the admin — activate admin access"**. Nothing
+      links here until you're signed in and verified, which is why the
+      pending-approval screen points at it.
+   3. Still on `/admin`, approve your own pending instructor request.
+   4. Sign out and back in so the new claims land in your ID token, then
+      `/instructor` will let you create sessions.
 
 ### Running a class
 
