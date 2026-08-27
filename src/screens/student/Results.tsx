@@ -4,6 +4,7 @@
 
 import { summarize } from '../../engine/scoring';
 import { useSimStore } from '../../state/simStore';
+import { CompletionChart } from '../../components/charts/CompletionChart';
 import { GanttChart } from '../../components/charts/GanttChart';
 import { UtilizationChart } from '../../components/charts/UtilizationChart';
 import { Celebration } from './Celebration';
@@ -79,6 +80,13 @@ export function Results({
           <Stat label="Productive time" value={`${Math.round(productiveShare * 100)}%`} />
           <Stat label="Rework events" value={String(r.reworkTotal)} />
         </div>
+
+        <h3 style={sectionH}>Project completion over time</h3>
+        <p style={sectionP}>
+          The whole job as one line. Dips are rework — a re-dirtied bathroom or a
+          repacked bag doesn’t just stall progress, it takes some back.
+        </p>
+        <CompletionChart completion={r.completion} finishSimMinute={r.finishSimMinute} />
 
         <h3 style={sectionH}>Where the two hours went</h3>
         <p style={sectionP}>

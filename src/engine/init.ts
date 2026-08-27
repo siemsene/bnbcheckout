@@ -19,7 +19,8 @@ import type {
 // 2: SimState gained the Gantt timeline (older checkpoints lack it).
 // 3: three personal errand tasks — older checkpoints have no state.tasks entry
 //    for them, which would crash accrueWork/checkEnd on dereference.
-export const ENGINE_VERSION = 3;
+// 4: per-minute completion samples for the progress chart.
+export const ENGINE_VERSION = 4;
 
 export interface RunOverrides {
   /** Replace the chaos-event schedule entirely (tests). */
@@ -86,6 +87,7 @@ export function createRun(seed: number, overrides?: RunOverrides): SimState {
     boostUntil: 0,
     emitted: {},
     utilization: CHAR_IDS.map(() => []),
+    completion: [],
     timeline: [],
     openSegIdx: {},
     actionLog: [],

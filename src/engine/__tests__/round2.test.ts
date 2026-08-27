@@ -205,6 +205,33 @@ describe('timeline (Gantt source)', () => {
   });
 });
 
+describe('completion curve', () => {
+  it('samples once per sim-minute and rises with progress', () => {
+    const s = createRun(61, quiet);
+    run(s, 1, [{ type: 'assign', charId: 'sora', taskId: 'strip-beds' }]);
+    run(s, 60 * 10);
+    expect(s.completion.length).toBe(10);
+    expect(s.completion[0]).toBeGreaterThanOrEqual(0);
+    expect(s.completion[9]).toBeGreaterThan(s.completion[0]);
+    expect(s.completion.every((v) => v >= 0 && v <= 1)).toBe(true);
+  });
+
+  it('dips when rework lands — progress is genuinely taken back', () => {
+    // Taro's emergency re-dirties a bathroom that was nearly finished.
+    const events: ScheduledEvent[] = [
+      { at: 60 * 6, type: 'toilet', charId: 'taro', duration: 240 },
+    ];
+    const s = createRun(67, { events });
+    run(s, 1, [{ type: 'assign', charId: 'hana', taskId: 'clean-bathroom' }]);
+    run(s, 60 * 5);
+    const before = s.completion[4];
+    run(s, 60 * 3);
+    const after = s.completion[6];
+    expect(s.tasks['clean-bathroom'].reworkCount).toBe(1);
+    expect(after).toBeLessThan(before);
+  });
+});
+
 describe('rework re-locking', () => {
   it('reopening the bathroom re-locks an untouched garbage task', () => {
     const events: ScheduledEvent[] = [

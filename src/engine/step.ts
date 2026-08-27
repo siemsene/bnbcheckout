@@ -31,6 +31,7 @@ import {
   WALKTHROUGH_SURPRISE_THRESHOLD,
   TICKS_PER_MINUTE,
 } from './content';
+import { pctComplete } from './scoring';
 import type {
   Action,
   CharId,
@@ -604,6 +605,10 @@ function sampleUtilization(state: SimState) {
       const prevTotal = state.utilization[i].reduce((a, b) => a + b, 0) * TICKS_PER_MINUTE;
       state.utilization[i][minute] = (c.busyTicks - prevTotal) / TICKS_PER_MINUTE;
     }
+    // Overall progress, sampled on the same cadence. Not monotonic: rework
+    // both removes finished work and inflates what is required, so the curve
+    // genuinely dips — which is the interesting part.
+    state.completion[minute] = pctComplete(state);
   }
 }
 

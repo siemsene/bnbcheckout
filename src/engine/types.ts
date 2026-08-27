@@ -194,6 +194,8 @@ export interface SimState {
   emitted: Record<string, true>;
   /** [charIndex][simMinute] = fraction of that minute spent busy, appended every 60 ticks. */
   utilization: number[][];
+  /** [simMinute] = overall project completion in [0,1]. Dips on rework. */
+  completion: number[];
   /** Closed + still-open activity spans, in start order — drives the Gantt. */
   timeline: TimelineSegment[];
   /** Index into `timeline` of each character's currently-open segment. Stored as

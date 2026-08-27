@@ -48,6 +48,8 @@ export interface ResultSummary {
   score: number;
   /** utilization[charIndex][simMinute] */
   utilization: number[][];
+  /** completion[simMinute] in [0,1] — the progress curve. */
+  completion: number[];
   /** Who worked on what, when — the Gantt source. */
   timeline: TimelineSegment[];
   /** Sim-minutes elapsed when the run ended (finish time, or the full 120). */
@@ -63,6 +65,7 @@ export function summarize(state: SimState): ResultSummary {
     avgUtilization: avgUtilization(state),
     score: score(state),
     utilization: state.utilization,
+    completion: state.completion,
     timeline: state.timeline,
     elapsedSimMinutes: simMinute(state),
     reworkTotal: Object.values(state.tasks).reduce((a, t) => a + t.reworkCount, 0),
