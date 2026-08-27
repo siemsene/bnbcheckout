@@ -4,7 +4,14 @@
 import { describe, expect, it } from 'vitest';
 import { createRun } from '../init';
 import { personalMult, step } from '../step';
-import { INTERRUPT_MAX_TICKS, MUSIC_BOOST, NO_LIST_MULT, VACUUM_PENALTY } from '../content';
+import { deserialize, serialize } from '../serialize';
+import {
+  INTERRUPT_MAX_TICKS,
+  MUSIC_BOOST,
+  NO_LIST_MULT,
+  TRANSIT_TICKS,
+  VACUUM_PENALTY,
+} from '../content';
 import type { Action, ScheduledEvent, SimEvent, SimState } from '../types';
 
 function run(state: SimState, ticks: number, actions: Action[] = []): SimEvent[] {
@@ -126,6 +133,75 @@ describe('new chaos events', () => {
     expect(s.chars.hana.activity === 'working' || s.chars.hana.activity === 'walking').toBe(
       true,
     );
+  });
+});
+
+describe('timeline (Gantt source)', () => {
+  it('records travel then work on the assigned task', () => {
+    const s = createRun(41, quiet);
+    run(s, 1, [{ type: 'assign', charId: 'hana', taskId: 'clean-bathroom' }]);
+    s.tasks['clean-bathroom'].workRequired = 100000; // keep her on it
+    run(s, 200);
+
+    const hers = s.timeline.filter((t) => t.charId === 'hana');
+    expect(hers.map((t) => t.kind)).toEqual(['travel', 'working']);
+    expect(hers.every((t) => t.taskId === 'clean-bathroom')).toBe(true);
+    // Travel is the fixed transit time; work runs to the current tick.
+    expect(hers[0].end - hers[0].start).toBe(TRANSIT_TICKS);
+    expect(hers[1].end).toBe(s.tick);
+  });
+
+  it('an interruption becomes a blocked span between two working spans', () => {
+    const events: ScheduledEvent[] = [
+      { at: 300, type: 'phone', charId: 'kenji', duration: 180 },
+    ];
+    const s = createRun(43, { events });
+    run(s, 1, [{ type: 'assign', charId: 'kenji', taskId: 'clean-living-room' }]);
+    s.tasks['clean-living-room'].workRequired = 100000;
+    run(s, 700);
+
+    const kinds = s.timeline.filter((t) => t.charId === 'kenji').map((t) => t.kind);
+    expect(kinds).toEqual(['travel', 'working', 'blocked', 'working']);
+    const blocked = s.timeline.find((t) => t.charId === 'kenji' && t.kind === 'blocked')!;
+    expect(blocked.end - blocked.start).toBe(180);
+  });
+
+  it('spans never overlap and stay inside the elapsed run', () => {
+    const s = createRun(47);
+    run(s, 1, [
+      { type: 'assign', charId: 'sora', taskId: 'strip-beds' },
+      { type: 'assign', charId: 'mei', taskId: 'make-breakfast' },
+      { type: 'assign', charId: 'taro', taskId: 'pack-bag-3' },
+    ]);
+    run(s, 3000);
+
+    for (const c of ['sora', 'mei', 'taro'] as const) {
+      const spans = s.timeline.filter((t) => t.charId === c);
+      expect(spans.length).toBeGreaterThan(0);
+      for (let i = 0; i < spans.length; i++) {
+        expect(spans[i].end).toBeGreaterThan(spans[i].start);
+        expect(spans[i].end).toBeLessThanOrEqual(s.tick);
+        if (i > 0) expect(spans[i].start).toBeGreaterThanOrEqual(spans[i - 1].end);
+      }
+    }
+  });
+
+  it('survives a checkpoint round-trip and keeps extending the same span', () => {
+    const s = createRun(53, quiet);
+    run(s, 1, [{ type: 'assign', charId: 'mei', taskId: 'make-breakfast' }]);
+    s.tasks['make-breakfast'].workRequired = 100000;
+    run(s, 300);
+    const before = s.timeline.length;
+
+    const resumed = deserialize(serialize(s))!;
+    expect(resumed).not.toBeNull();
+    run(resumed, 100);
+
+    // The open span was extended, not restarted — index-based, so JSON-safe.
+    expect(resumed.timeline.length).toBe(before);
+    const last = resumed.timeline[resumed.timeline.length - 1];
+    expect(last.kind).toBe('working');
+    expect(last.end).toBe(resumed.tick);
   });
 });
 

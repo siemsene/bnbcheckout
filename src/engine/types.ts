@@ -139,6 +139,22 @@ export type SimEvent =
 
 export type Outcome = 'running' | 'finished' | 'deadline';
 
+/** How a character spent a stretch of time — the Gantt's three bar styles. */
+export type TimelineKind =
+  | 'working' // contributing effective work to taskId
+  | 'travel' // walking to the task, or walking back after abandoning one
+  | 'blocked'; // on a call, distracted, in the bathroom, or unable to do the task
+
+export interface TimelineSegment {
+  charId: CharId;
+  /** Task they were assigned to, if any (blocked/travel time can be task-less). */
+  taskId?: string;
+  kind: TimelineKind;
+  /** Half-open tick range [start, end). */
+  start: number;
+  end: number;
+}
+
 export interface SimState {
   engineVersion: number;
   seed: number;
@@ -159,6 +175,11 @@ export interface SimState {
   emitted: Record<string, true>;
   /** [charIndex][simMinute] = fraction of that minute spent busy, appended every 60 ticks. */
   utilization: number[][];
+  /** Closed + still-open activity spans, in start order — drives the Gantt. */
+  timeline: TimelineSegment[];
+  /** Index into `timeline` of each character's currently-open segment. Stored as
+   * an index (not a reference) so checkpoints survive JSON round-tripping. */
+  openSegIdx: Partial<Record<CharId, number>>;
   actionLog: LoggedAction[];
 }
 

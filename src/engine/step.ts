@@ -38,6 +38,7 @@ import type {
   SimState,
   StepResult,
   TaskState,
+  TimelineKind,
 } from './types';
 
 export function step(state: SimState, actions: Action[] = []): StepResult {
@@ -50,6 +51,9 @@ export function step(state: SimState, actions: Action[] = []): StepResult {
   fireScheduledEvents(state, events);
   resolveNudge(state, events);
   endExpiredInterruptions(state);
+  // Recorded before accrueWork: each character's state for this tick is settled,
+  // and anyone finishing a task this tick still gets credited for it.
+  recordTimeline(state);
   accrueWork(state, events);
   refreshUnlocks(state);
   sampleUtilization(state);
@@ -342,6 +346,52 @@ function endExpiredInterruptions(state: SimState) {
       const arrive = state.tasks[c.taskId].arriveAt[id] ?? tick;
       if (arrive <= tick && c.unavailableUntil <= tick) c.activity = 'working';
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Timeline (Gantt source)
+
+function segmentKind(state: SimState, charId: CharId): TimelineKind | null {
+  const c = state.chars[charId];
+  switch (c.activity) {
+    case 'oncall':
+    case 'distracted':
+    case 'toilet':
+      return 'blocked';
+    case 'walking':
+    case 'walkback':
+      return 'travel';
+    case 'working':
+      // Assigned but producing nothing: no license for the task, or still
+      // paying the nudge cost. Worth showing — that time looks busy but isn't.
+      return contributes(state, charId) ? 'working' : 'blocked';
+    default:
+      return null; // idle — a gap in the chart
+  }
+}
+
+/** Extend or close each character's open span. Spans are half-open [start, end). */
+function recordTimeline(state: SimState) {
+  const tick = state.tick;
+  for (const id of CHAR_IDS) {
+    const kind = segmentKind(state, id);
+    const taskId = kind === null ? undefined : state.chars[id].taskId;
+    const idx = state.openSegIdx[id];
+    const open = idx === undefined ? undefined : state.timeline[idx];
+
+    if (open && open.kind === kind && open.taskId === taskId) {
+      open.end = tick;
+      continue;
+    }
+    // A differing (or absent) kind leaves the old span closed at its last
+    // extension, which is already the correct boundary.
+    if (kind === null) {
+      delete state.openSegIdx[id];
+      continue;
+    }
+    state.timeline.push({ charId: id, taskId, kind, start: tick - 1, end: tick });
+    state.openSegIdx[id] = state.timeline.length - 1;
   }
 }
 

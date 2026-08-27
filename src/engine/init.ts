@@ -16,7 +16,8 @@ import type {
   TaskState,
 } from './types';
 
-export const ENGINE_VERSION = 1;
+// 2: SimState gained the Gantt timeline (older checkpoints lack it).
+export const ENGINE_VERSION = 2;
 
 export interface RunOverrides {
   /** Replace the chaos-event schedule entirely (tests). */
@@ -83,6 +84,8 @@ export function createRun(seed: number, overrides?: RunOverrides): SimState {
     boostUntil: 0,
     emitted: {},
     utilization: CHAR_IDS.map(() => []),
+    timeline: [],
+    openSegIdx: {},
     actionLog: [],
   };
 }

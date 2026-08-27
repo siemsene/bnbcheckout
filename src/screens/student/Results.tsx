@@ -1,9 +1,10 @@
-// Post-game: celebration headline, score summary, utilization chart slot
-// (real dataviz-conformant chart lands in the polish phase), and what-you-
-// discovered recap.
+// End-of-round results: celebration headline, score summary, the run's Gantt
+// (who worked when on what), and the utilization chart. Shown as a blocking
+// overlay so every round is reviewed before the next one starts.
 
 import { summarize } from '../../engine/scoring';
 import { useSimStore } from '../../state/simStore';
+import { GanttChart } from '../../components/charts/GanttChart';
 import { UtilizationChart } from '../../components/charts/UtilizationChart';
 import { Celebration } from './Celebration';
 
@@ -19,15 +20,31 @@ export function Results({
   const r = summarize(sim);
   const finished = r.outcome === 'finished';
 
+  // Of all the time the team was assigned to something, how much actually
+  // produced work — the gap is walking and blocked time.
+  let assigned = 0;
+  let producing = 0;
+  for (const s of r.timeline) {
+    const d = s.end - s.start;
+    assigned += d;
+    if (s.kind === 'working') producing += d;
+  }
+  const productiveShare = assigned > 0 ? producing / assigned : 0;
+
   return (
     <div className="overlay">
       {finished && <Celebration />}
-      <div className="overlay-card">
+      <div className="overlay-card results-card">
         {finished && (
           <img
             src="/assets/scene/celebration.jpg"
             alt="The five friends celebrating in front of the loaded car"
-            style={{ width: '100%', borderRadius: 14, marginBottom: 12 }}
+            style={{
+              width: '100%',
+              maxWidth: 380,
+              borderRadius: 14,
+              marginBottom: 12,
+            }}
           />
         )}
         <h1>{finished ? '🎉 Checkout complete!' : '⏰ Time’s up!'}</h1>
@@ -59,19 +76,43 @@ export function Results({
         >
           <Stat label="Score" value={String(r.score)} />
           <Stat label="Avg utilization" value={`${Math.round(r.avgUtilization * 100)}%`} />
+          <Stat label="Productive time" value={`${Math.round(productiveShare * 100)}%`} />
           <Stat label="Rework events" value={String(r.reworkTotal)} />
         </div>
 
-        <h3 style={{ margin: '10px 0' }}>Who was busy when</h3>
+        <h3 style={sectionH}>Where the two hours went</h3>
+        <p style={sectionP}>
+          Every stretch of every friend’s morning. Gaps are idle time — nobody was
+          assigned anything.
+        </p>
+        <GanttChart timeline={r.timeline} finishSimMinute={r.finishSimMinute} />
+
+        <h3 style={sectionH}>Who was busy when</h3>
+        <p style={sectionP}>
+          The same story as a rate: how much of each minute each friend spent busy.
+        </p>
         <UtilizationChart utilization={r.utilization} />
 
-        <button className="btn-big" onClick={onPlayAgain} style={{ marginTop: 18 }}>
+        <button className="btn-big" onClick={onPlayAgain} style={{ marginTop: 22 }}>
           {playAgainLabel}
         </button>
       </div>
     </div>
   );
 }
+
+const sectionH: React.CSSProperties = {
+  margin: '22px 0 2px',
+  textAlign: 'left',
+  borderTop: '1px solid var(--line)',
+  paddingTop: 16,
+};
+const sectionP: React.CSSProperties = {
+  margin: '0 0 8px',
+  textAlign: 'left',
+  fontSize: '0.85rem',
+  color: 'var(--ink-soft)',
+};
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (

@@ -2,7 +2,7 @@
 // and post-game charts.
 
 import { CHAR_IDS, TICKS_PER_MINUTE } from './content';
-import type { SimState } from './types';
+import type { SimState, TimelineSegment } from './types';
 
 /** Weighted completion in [0, 1]: total effective work done over total required. */
 export function pctComplete(state: SimState): number {
@@ -48,6 +48,10 @@ export interface ResultSummary {
   score: number;
   /** utilization[charIndex][simMinute] */
   utilization: number[][];
+  /** Who worked on what, when — the Gantt source. */
+  timeline: TimelineSegment[];
+  /** Sim-minutes elapsed when the run ended (finish time, or the full 120). */
+  elapsedSimMinutes: number;
   reworkTotal: number;
 }
 
@@ -59,6 +63,8 @@ export function summarize(state: SimState): ResultSummary {
     avgUtilization: avgUtilization(state),
     score: score(state),
     utilization: state.utilization,
+    timeline: state.timeline,
+    elapsedSimMinutes: simMinute(state),
     reworkTotal: Object.values(state.tasks).reduce((a, t) => a + t.reworkCount, 0),
   };
 }

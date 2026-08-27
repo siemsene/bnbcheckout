@@ -487,6 +487,12 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   max-height: 88vh;
   overflow-y: auto;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+/* Results need room for the Gantt's two-hour axis. */
+.results-card {
+  max-width: 1000px;
+  width: min(96vw, 1000px);
+  max-height: 92vh;
   text-align: center;
 }
 
