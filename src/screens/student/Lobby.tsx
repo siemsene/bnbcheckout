@@ -20,7 +20,7 @@ export function Lobby({
         <h1>Checkout Rush</h1>
         <p style={{ color: 'var(--ink-soft)' }}>
           It’s 8:00 AM. Checkout is at 10:00 AM sharp. Five friends, one Airbnb,
-          eighteen things to do. You are <strong>Sora</strong> — get your team
+          twenty-two things to do. You are <strong>Sora</strong> — get your team
           working <em>in parallel</em> or you’ll never make it.
         </p>
         <div className="char-cards">

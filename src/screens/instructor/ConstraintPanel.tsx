@@ -23,7 +23,7 @@ const CHARACTER_NOTES: { name: string; skills: string; quirks: string }[] = [
     name: 'Taro',
     skills: 'Strong (1.6× heavy tasks). No license.',
     quirks:
-      'Works best alone (0.7× when sharing). 2–3 toilet emergencies per game — each re-dirties the bathroom (50% rework). Cannot be nudged out of one.',
+      'Works best alone (0.7× when sharing). 2–3 toilet emergencies per game — each re-dirties the bathroom (50% rework). Cannot be nudged out of one. Once he finishes the pharmacy errand, ~75% of his REMAINING emergencies are skipped — so going early is worth more than going late.',
   },
   {
     name: 'Hana',
@@ -88,6 +88,8 @@ export function ConstraintPanel() {
               <td style={td}>
                 {[
                   t.requiresLicense && 'license required',
+                  t.onlyChars && `ONLY ${t.onlyChars.join('/')} — anyone else is refused`,
+                  t.noRamp && 'no learning curve',
                   t.travel && 'travel: no learning curve, abandon = walk back & lose progress',
                   t.owners &&
                     `owner ${t.ownerMult}× (${t.owners.join(', ')})${t.nonOwnerMult ? `, others ${t.nonOwnerMult}×` : ''}`,
@@ -110,7 +112,10 @@ export function ConstraintPanel() {
         walks over (~40s), chats (~20s), walks back — she produces nothing en
         route · un-nudged interruptions (calls, distractions, doorbell) end on
         their own after at most 5 min — nudging just recovers the time sooner ·
-        the final walkthrough sometimes finds one last forgotten item (40%).
+        the final walkthrough sometimes finds one last forgotten item (40%) ·
+        the three personal errands have no prerequisites and are each shorter
+        than the walkthrough, so a team that plans ahead does them in the gaps —
+        a team that forgets finishes the walkthrough and then waits.
       </p>
       <p style={{ fontSize: '0.85rem', color: 'var(--ink-soft)' }}>
         Random events per run: Kenji’s boss calls (~6×) · Mei drifts off (~8×) ·

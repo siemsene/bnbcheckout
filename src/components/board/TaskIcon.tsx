@@ -93,6 +93,37 @@ const PATHS: Record<string, { title: string; el: React.ReactNode }> = {
       </>
     ),
   },
+  'call-mom': {
+    title: 'Call mom',
+    el: (
+      <>
+        <path
+          {...STROKE}
+          d="M6 3h3l1.5 4-2 1.5a12 12 0 0 0 6 6L16 12l4 1.5V17a2 2 0 0 1-2.2 2A15 15 0 0 1 4 5.2 2 2 0 0 1 6 3Z"
+        />
+      </>
+    ),
+  },
+  'buy-imodium': {
+    title: 'Pharmacy run',
+    el: (
+      <>
+        <rect {...STROKE} x="7" y="3" width="10" height="4" rx="1.5" />
+        <path {...STROKE} d="M8 7h8l-.8 12a2 2 0 0 1-2 2h-2.4a2 2 0 0 1-2-2Z" />
+        <path {...STROKE} d="M12 11v5m-2.5-2.5h5" />
+      </>
+    ),
+  },
+  'guest-book': {
+    title: 'Guest-book note',
+    el: (
+      <>
+        <path {...STROKE} d="M4 5a2 2 0 0 1 2-2h9v14H6a2 2 0 0 0-2 2Z" />
+        <path {...STROKE} d="M15 3h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
+        <path {...STROKE} d="M7.5 7.5h4m-4 3h3" />
+      </>
+    ),
+  },
   'final-walkthrough': {
     title: 'Final walkthrough',
     el: (

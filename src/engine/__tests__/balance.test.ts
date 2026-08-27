@@ -41,17 +41,26 @@ function smartStrategy(s: SimState): Action[] {
   const eatDone = s.tasks['eat-breakfast'].status === 'done';
   if (makeDone && !eatDone) {
     for (const c of CHAR_IDS) {
-      if (s.chars[c].taskId !== 'eat-breakfast' && s.chars[c].activity !== 'walkback') {
+      // Never yank someone off a travel task to eat: abandoning wipes all of
+      // their progress and charges a walk-back. No competent player does this.
+      const onTrip = s.chars[c].taskId && TASK_BY_ID[s.chars[c].taskId!].travel;
+      if (
+        s.chars[c].taskId !== 'eat-breakfast' &&
+        s.chars[c].activity !== 'walkback' &&
+        !onTrip
+      ) {
         actions.push({ type: 'assign', charId: c, taskId: 'eat-breakfast' });
       }
     }
     return actions;
   }
+  // Each friend's own errand comes first when they're free — that is what a
+  // competent player does with a task nobody else can take.
   const prefs: Record<string, string[]> = {
-    mei: ['make-breakfast', 'buy-snacks', 'clean-bedroom-2', 'pack-bag-2', 'tidy-kitchen'],
+    mei: ['make-breakfast', 'call-mom', 'buy-snacks', 'clean-bedroom-2', 'pack-bag-2', 'tidy-kitchen'],
     kenji: ['fetch-car-a', 'fetch-car-b', 'pack-bag-1', 'clean-bedroom-1', 'load-car-a', 'garbage'],
-    hana: ['clean-bathroom', 'clean-bedroom-3', 'clean-bedroom-1', 'tidy-kitchen', 'fetch-car-b'],
-    taro: ['clean-living-room', 'pack-bag-3', 'load-car-a', 'load-car-b', 'garbage', 'clean-bedroom-3'],
+    hana: ['guest-book', 'clean-bathroom', 'clean-bedroom-3', 'clean-bedroom-1', 'tidy-kitchen', 'fetch-car-b'],
+    taro: ['buy-imodium', 'clean-living-room', 'pack-bag-3', 'load-car-a', 'load-car-b', 'garbage', 'clean-bedroom-3'],
     sora: ['strip-beds', 'pack-bag-1', 'clean-bedroom-1', 'clean-bedroom-2', 'buy-snacks', 'load-car-b', 'final-walkthrough'],
   };
   for (const c of CHAR_IDS) {
@@ -67,6 +76,7 @@ function smartStrategy(s: SimState): Action[] {
         s.tasks[t.id].status === 'open' &&
         s.tasks[t.id].assignees.length < t.maxWorkers &&
         (!t.requiresLicense || c === 'kenji' || c === 'hana') &&
+        (!t.onlyChars || t.onlyChars.includes(c)) &&
         t.id !== 'eat-breakfast',
     )?.id;
     const target = wish ?? fallback;
@@ -87,6 +97,14 @@ function runWith(seed: number, strategy: (s: SimState) => Action[]): SimState {
 }
 
 const SEEDS = [3, 17, 42, 101, 256, 999, 1234, 5150, 8888, 31415];
+
+// Measured after the personal errands landed (engine v3): smart play finishes
+// 10/10, average 94.6', slowest finisher 103.4' of 120', all three errands done
+// every run. Recorded because the two assertions below move in OPPOSITE
+// directions as difficulty rises — a harder scenario drops slow seeds out of
+// `times`, which pulls `avg` DOWN — so neither number alone tells you whether a
+// balance change was harmless. If these start failing, fix the content (the
+// errands are the cheapest lever), not the thresholds.
 
 describe('scenario balance', () => {
   it('the herd strategy (no parallelism) misses the 10 AM deadline on most seeds', () => {

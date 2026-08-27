@@ -17,7 +17,9 @@ import type {
 } from './types';
 
 // 2: SimState gained the Gantt timeline (older checkpoints lack it).
-export const ENGINE_VERSION = 2;
+// 3: three personal errand tasks — older checkpoints have no state.tasks entry
+//    for them, which would crash accrueWork/checkEnd on dereference.
+export const ENGINE_VERSION = 3;
 
 export interface RunOverrides {
   /** Replace the chaos-event schedule entirely (tests). */
@@ -120,7 +122,8 @@ function rollSchedule(rng: ReturnType<typeof mulberry32>): ScheduledEvent[] {
     t += rng.uniform(T.meiDistraction.gapMin[0], T.meiDistraction.gapMin[1]) * 60;
   }
 
-  // Taro's emergencies
+  // Taro's emergencies. Whether the Imodium would head each one off is decided
+  // here, not at fire time — step() has no RNG.
   const toiletCount = rng.int(T.taroToilet.count[0], T.taroToilet.count[1]);
   for (let i = 0; i < toiletCount; i++) {
     events.push({
@@ -128,6 +131,7 @@ function rollSchedule(rng: ReturnType<typeof mulberry32>): ScheduledEvent[] {
       type: 'toilet',
       charId: 'taro',
       duration: T.taroToilet.durationMin * 60,
+      skippableByImodium: rng.next() < T.taroToilet.imodiumSkipChance,
     });
   }
 

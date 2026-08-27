@@ -479,7 +479,13 @@ describe('end conditions & scoring', () => {
         const eatDone = s.tasks['eat-breakfast'].status === 'done';
         if (makeDone && !eatDone) {
           for (const c of CHAR_IDS) {
-            if (s.chars[c].taskId !== 'eat-breakfast' && s.chars[c].activity !== 'walkback') {
+            // Don't abandon a travel task to eat — that wipes its progress.
+            const onTrip = s.chars[c].taskId && TASK_BY_ID[s.chars[c].taskId!].travel;
+            if (
+              s.chars[c].taskId !== 'eat-breakfast' &&
+              s.chars[c].activity !== 'walkback' &&
+              !onTrip
+            ) {
               pending.push({ type: 'assign', charId: c, taskId: 'eat-breakfast' });
             }
           }
@@ -491,7 +497,9 @@ describe('end conditions & scoring', () => {
                   s.tasks[t.id].status === 'open' &&
                   s.tasks[t.id].assignees.length <
                     Math.min(1, TASK_BY_ID[t.id].maxWorkers) &&
-                  (!t.requiresLicense || (c === 'kenji' || c === 'hana')),
+                  (!t.requiresLicense || (c === 'kenji' || c === 'hana')) &&
+                  // Without this the filler jams on an errand it cannot do.
+                  (!t.onlyChars || t.onlyChars.includes(c)),
               );
               if (open.length) {
                 pending.push({ type: 'assign', charId: c, taskId: open[0].id });

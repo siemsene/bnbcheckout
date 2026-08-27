@@ -1,7 +1,7 @@
 // "Who worked when on what" — a Gantt of the whole run: one row per friend,
 // ranged bars over the fixed 8:00–10:00 window.
 //
-// Color encodes how the time was SPENT, never which task it was (19 tasks is
+// Color encodes how the time was SPENT, never which task it was (22 tasks is
 // far past any categorical palette): working and travel are two steps of one
 // blue ordinal ramp (validated: monotone L, light end 2.03:1 on this surface),
 // and blocked is the reserved "serious" status step. Task identity comes from
@@ -231,7 +231,7 @@ export function GanttChart({
               fill={INK}
               fontWeight={600}
             >
-              keys in the lockbox ▸
+              everyone finished ▸
             </text>
           </>
         )}

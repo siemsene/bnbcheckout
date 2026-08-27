@@ -1,4 +1,4 @@
-// The scenario: 5 friends, 18 tasks, hidden constraints.
+// The scenario: 5 friends, 22 tasks, hidden constraints.
 // Durations are base sim-minutes; each run multiplies them by [0.85, 1.2].
 
 import type { CharDef, CharId, TaskDef } from './types';
@@ -294,6 +294,46 @@ export const TASKS: TaskDef[] = [
     skill: 'heavy',
     room: 'outside',
   },
+  // Personal errands. No predecessors, so they are available from minute zero —
+  // and short enough to slot inside the final walkthrough, which is what stops
+  // four friends idling at the end. Each is locked to one person, so they can
+  // never all be dumped on whoever happens to be free.
+  {
+    id: 'call-mom',
+    name: 'Mei: ring your mother back',
+    blurb:
+      'Three missed calls since breakfast. Only Mei can have this conversation, and it is not getting shorter.',
+    baseMinutes: 5,
+    maxWorkers: 1,
+    onlyChars: ['mei'],
+    noRamp: true,
+    skill: 'general',
+    room: 'living',
+  },
+  {
+    id: 'buy-imodium',
+    name: 'Taro: pharmacy run',
+    blurb:
+      'It is around the corner. Taro knows exactly why he is going. Sooner is better than later.',
+    baseMinutes: 6,
+    maxWorkers: 1,
+    onlyChars: ['taro'],
+    travel: true,
+    skill: 'shopping',
+    room: 'outside',
+  },
+  {
+    id: 'guest-book',
+    name: 'Hana: thank-you note in the guest book',
+    blurb:
+      'Hana promised the host a proper note, and she is the only one whose handwriting is fit for it.',
+    baseMinutes: 4,
+    maxWorkers: 1,
+    onlyChars: ['hana'],
+    noRamp: true,
+    skill: 'general',
+    room: 'hall',
+  },
   {
     id: 'final-walkthrough',
     name: 'Final walkthrough & keys in lockbox',
@@ -347,7 +387,15 @@ export const INTERRUPT_MAX_TICKS = 5 * 60;
 export const EVENT_TUNING = {
   kenjiPhone: { firstMin: [8, 14], gapMin: [10, 14], durationMin: [3, 5], count: 6 },
   meiDistraction: { firstMin: [5, 10], gapMin: [8, 12], maxDurationMin: 8, count: 8 },
-  taroToilet: { windowMin: [15, 100], durationMin: 4, count: [2, 3] },
+  /** `imodiumSkipChance`: per-emergency odds it is headed off once Taro has
+   * been to the pharmacy. Deliberately below 1 — buying it early is strong but
+   * never a guaranteed shutdown of the mechanic. */
+  taroToilet: {
+    windowMin: [15, 100],
+    durationMin: 4,
+    count: [2, 3],
+    imodiumSkipChance: 0.75,
+  },
   /** The neighbor rings; whoever answers is stuck chatting until nudged. */
   doorbell: { windowMin: [12, 95], durationMin: [3, 4], count: [1, 2] },
   /** A cat wanders in; if the living room was already clean, it un-cleans a bit. */

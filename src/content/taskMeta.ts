@@ -22,6 +22,9 @@ export const TASK_TOOLS: Record<string, string> = {
   'load-car-a': '📦',
   'load-car-b': '📦',
   garbage: '🗑️',
+  'call-mom': '📞',
+  'buy-imodium': '💊',
+  'guest-book': '✍️',
   'final-walkthrough': '📋',
 };
 

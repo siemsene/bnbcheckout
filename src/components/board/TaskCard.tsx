@@ -2,8 +2,9 @@
 // live productivity, drop target for chips.
 
 import { useDroppable } from '@dnd-kit/core';
-import { TASK_BY_ID } from '../../engine/content';
+import { CHARACTERS, TASK_BY_ID } from '../../engine/content';
 import { personalMult } from '../../engine/step';
+import type { CharId } from '../../engine/types';
 import { useSimStore } from '../../state/simStore';
 import { CharacterChip } from './CharacterChip';
 import { TaskIcon } from './TaskIcon';
@@ -25,7 +26,12 @@ export function TaskCard({ taskId }: { taskId: string }) {
   const task = sim.tasks[taskId];
 
   const full = task.assignees.length >= def.maxWorkers;
-  const canReceive = selected !== null && task.status === 'open' && !full;
+  // Personal errands belong to one named friend; the engine rejects anyone else,
+  // so don't offer the drop in the first place.
+  const eligible = (c: CharId) => !def.onlyChars || def.onlyChars.includes(c);
+  const canReceive =
+    selected !== null && task.status === 'open' && !full && eligible(selected);
+  const ownerNames = def.onlyChars?.map((c) => CHARACTERS[c].name).join(' or ');
   const pct = Math.min(100, (task.workDone / task.workRequired) * 100);
   const unmet = (def.preds ?? [])
     .filter((p) => sim.tasks[p].status !== 'done')
@@ -33,8 +39,13 @@ export function TaskCard({ taskId }: { taskId: string }) {
   const anyMet = !def.predsAny || def.predsAny.some((p) => sim.tasks[p].status === 'done');
   if (!anyMet && def.predsAny) unmet.push(`any of: ${def.predsAny.map((p) => TASK_BY_ID[p].name).join(' / ')}`);
 
+  const dragged = active?.data.current?.charId as CharId | undefined;
   const dropClass =
-    isOver && active ? (full ? 'drop-full' : 'drop-ok') : '';
+    isOver && active
+      ? full || (dragged && !eligible(dragged))
+        ? 'drop-full'
+        : 'drop-ok'
+      : '';
 
   const assignSelected = () => {
     if (!canReceive || !selected) return;
@@ -69,10 +80,18 @@ export function TaskCard({ taskId }: { taskId: string }) {
           )}
         </div>
         <div className="task-est" aria-label={`Estimated about ${def.baseMinutes} minutes; ${
-          def.minWorkers === 5 ? 'needs all five' : `up to ${def.maxWorkers} ${def.maxWorkers === 1 ? 'person' : 'people'}`
+          ownerNames
+            ? `only ${ownerNames} can do this`
+            : def.minWorkers === 5 ? 'needs all five' : `up to ${def.maxWorkers} ${def.maxWorkers === 1 ? 'person' : 'people'}`
         }`}>
           ~{def.baseMinutes}′ ·{' '}
-          {def.minWorkers === 5 ? 'all 5 together' : `${'👤'.repeat(def.maxWorkers)} up to ${def.maxWorkers}`}
+          {ownerNames ? (
+            <strong className="task-owner">{ownerNames} only</strong>
+          ) : def.minWorkers === 5 ? (
+            'all 5 together'
+          ) : (
+            `${'👤'.repeat(def.maxWorkers)} up to ${def.maxWorkers}`
+          )}
           {def.travel && ' · 🚶 away from the house'}
           {task.assignees.length > 1 && def.minWorkers !== 5 && (
             <span title="Combined output of the crew vs one person — more hands help, but not linearly">

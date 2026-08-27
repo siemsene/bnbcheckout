@@ -96,6 +96,32 @@ export const BUBBLES: Record<string, BubbleSpec> = {
   'walkback-fetch-car-a': { lines: ['I was HALFWAY to the garage!'] },
   'walkback-fetch-car-b': { lines: ['Fine. Walking back. Great use of my morning.'] },
   'walkback-buy-snacks': { lines: ['But… the snacks were right there…'] },
+  'walkback-buy-imodium': {
+    charId: 'taro',
+    lines: ['I was AT THE COUNTER. Do you understand what you have done.'],
+  },
+
+  // --- Personal errands -----------------------------------------------------
+  'not-mine-sora': { lines: ['That’s not mine to do — it has to be them.'] },
+  'not-mine-kenji': { lines: ['Pretty sure that one isn’t mine.'] },
+  'not-mine-mei': { lines: ['That’s not my errand!'] },
+  'not-mine-taro': { lines: ['Not my job. Genuinely, not my job.'] },
+  'not-mine-hana': { lines: ['Ooh, that’s someone else’s to do.'] },
+  'imodium-holding': {
+    charId: 'taro',
+    lines: [
+      'The pharmacy run is paying off. Crisis averted.',
+      'I felt that one coming and… nothing. Modern medicine.',
+    ],
+  },
+  'call-mom-done': {
+    charId: 'mei',
+    lines: ['Mum says hi to everyone and asks why we never call.'],
+  },
+  'guest-book-done': {
+    charId: 'hana',
+    lines: ['Note written. I drew a little house on it. Five stars.'],
+  },
 
   // --- New chaos ------------------------------------------------------------
   doorbell: {

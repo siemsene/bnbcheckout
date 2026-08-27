@@ -34,7 +34,7 @@ export function WaitingRoom({
         <p style={{ fontSize: '1.05rem' }}>
           {finished ? (
             <>
-              Keys in the lockbox at{' '}
+              Everything done and away by{' '}
               <strong>
                 {Math.floor(8 + r.finishSimMinute! / 60)}:
                 {String(Math.floor(r.finishSimMinute!) % 60).padStart(2, '0')} AM

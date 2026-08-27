@@ -14,15 +14,28 @@ export const CHAR_HINTS: Record<CharId, { strengths: string[]; watchouts: string
   },
   mei: {
     strengths: ['Brilliant cook', 'Knows everyone’s snacks — fast shopper'],
-    watchouts: ['No license', 'Drifts off (birds, phone) and needs nudging'],
+    watchouts: [
+      'No license',
+      'Drifts off (birds, phone) and needs nudging',
+      'Owes her mother a phone call — only she can make it',
+    ],
   },
   taro: {
     strengths: ['Very strong — luggage, garbage, loading', 'Focused when working alone'],
-    watchouts: ['No license', 'Noticeably slower when sharing a task', 'That street food last night… bathroom emergencies happen'],
+    watchouts: [
+      'No license',
+      'Noticeably slower when sharing a task',
+      'That street food last night… bathroom emergencies happen',
+      'A pharmacy run would head most of those off — the sooner the better',
+    ],
   },
   hana: {
     strengths: ['Meticulous cleaner', 'Has a license', 'Thrives working WITH someone'],
-    watchouts: ['Sluggish when left alone', 'Cleans so thoroughly she finds forgotten items — expect repacking'],
+    watchouts: [
+      'Sluggish when left alone',
+      'Cleans so thoroughly she finds forgotten items — expect repacking',
+      'Promised the host a guest-book note — hers to write',
+    ],
   },
 };
 

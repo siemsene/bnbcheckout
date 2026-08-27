@@ -119,6 +119,15 @@ function applyAction(state: SimState, action: Action, events: SimEvent[]) {
   const char = state.chars[action.charId];
   if (char.taskId === action.taskId) return;
 
+  // Personal errands are rejected outright rather than accepted-and-useless.
+  // This MUST sit above removeFromTask: an errand is mandatory and single-slot,
+  // so letting the wrong friend take it would strand them (losing any travel
+  // progress) AND permanently block the one person who can finish it.
+  if (def.onlyChars && !def.onlyChars.includes(action.charId)) {
+    bubble(state, events, action.charId, `not-mine-${action.charId}`, true);
+    return;
+  }
+
   removeFromTask(state, action.charId, events);
   task.assignees.push(action.charId);
   char.taskId = action.taskId;
@@ -219,6 +228,16 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
         break;
       }
       case 'toilet': {
+        // The pharmacy run pays off: most (not all) remaining emergencies are
+        // suppressed. nextEventIdx was already advanced, so breaking here
+        // consumes the event and leaves the rest of the schedule untouched.
+        if (
+          ev.skippableByImodium &&
+          state.tasks['buy-imodium']?.status === 'done'
+        ) {
+          bubble(state, events, ev.charId, 'imodium-holding', true);
+          break;
+        }
         const c = state.chars[ev.charId];
         c.activity = 'toilet';
         c.unavailableUntil = tick + ev.duration;
@@ -406,6 +425,7 @@ function contributes(state: SimState, charId: CharId): boolean {
   if (c.unavailableUntil > state.tick) return false;
   const def = TASK_BY_ID[c.taskId];
   if (def.requiresLicense && !CHARACTERS[charId].license) return false;
+  if (def.onlyChars && !def.onlyChars.includes(charId)) return false;
   return true;
 }
 
@@ -433,6 +453,7 @@ export function personalMult(state: SimState, charId: CharId): number | null {
   const def = TASK_BY_ID[c.taskId];
   const task = state.tasks[c.taskId];
   if (def.requiresLicense && !CHARACTERS[charId].license) return 0;
+  if (def.onlyChars && !def.onlyChars.includes(charId)) return 0;
   if (!contributes(state, charId)) return 0;
 
   const charDef = CHARACTERS[charId];
@@ -441,7 +462,7 @@ export function personalMult(state: SimState, charId: CharId): number | null {
     if (def.owners.includes(charId)) m *= def.ownerMult ?? 1;
     else m *= def.nonOwnerMult ?? 1;
   }
-  if (!def.travel) {
+  if (!def.travel && !def.noRamp) {
     const arrived = task.arriveAt[charId] ?? state.tick;
     const onTask = Math.max(0, state.tick - arrived);
     m *=

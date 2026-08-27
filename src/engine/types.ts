@@ -39,8 +39,19 @@ export interface TaskDef {
   equipment?: 'vacuum';
   /** Travel tasks: no learning ramp; abandoning loses progress and costs a walk-back. */
   travel?: boolean;
+  /** No learning ramp, without the travel penalties. There is no getting
+   * better at phoning your mother, and the ramp would otherwise add ~35% to
+   * the wall time of a deliberately short task. */
+  noRamp?: boolean;
   /** Only characters with a driving license can contribute. */
   requiresLicense?: boolean;
+  /**
+   * Hard allow-list: nobody outside it contributes anything. Used for the
+   * personal errands ("Mei, ring your mother"). Note this is NOT the same as
+   * `owners` + `nonOwnerMult: 0` — that would let the wrong friend take the
+   * crew slot and dilute the team factor while producing nothing.
+   */
+  onlyChars?: CharId[];
   /** Owners work faster (bedrooms: 1.3x, bags: 2x with 0.6x for strangers). */
   owners?: CharId[];
   ownerMult?: number;
@@ -69,7 +80,15 @@ export interface CharDef {
 export type ScheduledEvent =
   | { at: number; type: 'phone'; charId: CharId; duration: number }
   | { at: number; type: 'distraction'; charId: CharId; maxDuration: number }
-  | { at: number; type: 'toilet'; charId: CharId; duration: number }
+  /** `skippableByImodium` is pre-rolled so the suppression stays deterministic
+   * — there is no RNG available at step time. */
+  | {
+      at: number;
+      type: 'toilet';
+      charId: CharId;
+      duration: number;
+      skippableByImodium?: boolean;
+    }
   | { at: number; type: 'doorbell'; charId: CharId; duration: number }
   | { at: number; type: 'cat' }
   | { at: number; type: 'spill' }
