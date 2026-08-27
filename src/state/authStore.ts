@@ -27,6 +27,10 @@ interface AuthStore {
   login(email: string, password: string): Promise<boolean>;
   logout(): Promise<void>;
   refreshClaims(): Promise<void>;
+  /** Send the verification email again (it lands in spam more often than not). */
+  resendVerification(): Promise<boolean>;
+  /** Re-read emailVerified from the server after the link is clicked. */
+  reloadUser(): Promise<void>;
 }
 
 let initialized = false;
@@ -53,6 +57,34 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ user, loading: false });
       await get().refreshClaims();
     });
+  },
+
+  async resendVerification() {
+    const user = auth().currentUser;
+    if (!user) return false;
+    set({ error: null });
+    try {
+      await sendEmailVerification(user);
+      return true;
+    } catch (e) {
+      // Firebase throttles these fairly aggressively; say so rather than
+      // leaving the button looking broken.
+      const msg = e instanceof Error ? e.message : '';
+      set({
+        error: /too-many-requests/.test(msg)
+          ? 'Firebase is rate-limiting verification emails — wait a few minutes and try again.'
+          : msg || 'Could not resend the verification email.',
+      });
+      return false;
+    }
+  },
+
+  async reloadUser() {
+    const user = auth().currentUser;
+    if (!user) return;
+    await user.reload();
+    // reload() mutates in place, so hand React a fresh reference.
+    set({ user: auth().currentUser });
   },
 
   async refreshClaims() {

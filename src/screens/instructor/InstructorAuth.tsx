@@ -10,9 +10,26 @@ export function InstructorAuth() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [registered, setRegistered] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
-  const { user, isInstructor, instructorStatus, error, loading, init, register, login, logout, refreshClaims } =
-    useAuthStore();
+  const {
+    user,
+    isInstructor,
+    instructorStatus,
+    error,
+    loading,
+    init,
+    register,
+    login,
+    logout,
+    refreshClaims,
+    resendVerification,
+    reloadUser,
+  } = useAuthStore();
+
+  // Firebase's verification mail comes from the project's default sender.
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID ?? 'your-project';
 
   useEffect(() => init(), [init]);
 
@@ -29,10 +46,22 @@ export function InstructorAuth() {
         <div className="overlay-card">
           <h1>Almost there</h1>
           {!user.emailVerified ? (
-            <p>
-              We sent a verification link to <strong>{user.email}</strong>. Click
-              it, then come back here.
-            </p>
+            <>
+              <p>
+                We sent a verification link to <strong>{user.email}</strong>. Click
+                it, then come back here.
+              </p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--ink-soft)' }}>
+                Not there? It comes from <code>noreply@{projectId}.firebaseapp.com</code>,
+                which often lands in <strong>Spam</strong> or <strong>Promotions</strong> —
+                search your mail for that address before resending.
+              </p>
+              {resent && (
+                <p style={{ color: 'var(--ok, #0ca30c)', fontWeight: 700 }} role="status">
+                  Sent again — give it a minute.
+                </p>
+              )}
+            </>
           ) : instructorStatus === 'rejected' ? (
             <p role="alert">Your instructor request was declined. Contact the site admin.</p>
           ) : (
@@ -42,10 +71,44 @@ export function InstructorAuth() {
               ready.
             </p>
           )}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
-            <button onClick={() => refreshClaims().then(() => window.location.reload())}>
-              I’ve been approved — refresh
-            </button>
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              justifyContent: 'center',
+              marginTop: 16,
+              flexWrap: 'wrap',
+            }}
+          >
+            {!user.emailVerified ? (
+              <>
+                <button
+                  onClick={async () => {
+                    await reloadUser();
+                    if (!useAuthStore.getState().user?.emailVerified) return;
+                    await refreshClaims();
+                    window.location.reload();
+                  }}
+                >
+                  I’ve clicked the link — check again
+                </button>
+                <button
+                  className="btn-ghost"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    setResent(await resendVerification());
+                    setBusy(false);
+                  }}
+                >
+                  {busy ? 'Sending…' : 'Resend verification email'}
+                </button>
+              </>
+            ) : (
+              <button onClick={() => refreshClaims().then(() => window.location.reload())}>
+                I’ve been approved — refresh
+              </button>
+            )}
             <button className="btn-ghost" onClick={() => logout()}>
               Sign out
             </button>
