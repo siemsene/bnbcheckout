@@ -32,7 +32,9 @@ body {
 button {
   font: inherit;
   cursor: pointer;
-  border: none;
+  /* Transparent rather than none, so ghost buttons (which add a real border)
+     keep exactly the same box as solid ones when sat side by side. */
+  border: 2px solid transparent;
   border-radius: 10px;
   padding: 8px 16px;
   background: var(--accent);
@@ -467,6 +469,200 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 .ticker-done { color: var(--accent); }
 .ticker-rework { color: var(--accent-warm); }
 .ticker-warn { color: var(--danger); font-weight: 700; }
+
+/* ------------------------------------------------------------------ brand */
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: 0.01em;
+}
+.brand-tagline { font-size: 0.75rem; color: var(--ink-soft); }
+
+/* Page shell shared by the landing, auth, dashboard and admin screens. */
+.shell { min-height: 100vh; display: flex; flex-direction: column; }
+.shell-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.shell-bar nav { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.shell-main { flex: 1; width: 100%; max-width: 1040px; margin: 0 auto; padding: 28px 24px 56px; }
+.shell-foot {
+  padding: 18px 24px 28px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.page-head { margin-bottom: 22px; }
+.page-head h1 { font-size: 2rem; margin: 0 0 4px; }
+.page-head p { margin: 0; color: var(--ink-soft); }
+
+/* Cards ------------------------------------------------------------------ */
+
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+}
+.card-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.card-link {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+.card-link:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(70, 60, 40, 0.16); }
+@media (prefers-reduced-motion: reduce) {
+  .card-link { transition: none; }
+  .card-link:hover { transform: none; }
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: #fff;
+  white-space: nowrap;
+}
+.pill-lobby { background: #fdf3dd; border-color: #e6cf9a; }
+.pill-live { background: #e3f2e6; border-color: #9fcaa8; }
+.pill-done { background: #efeeea; }
+.pill-warn { background: #fbe9e4; border-color: #e0a89c; }
+
+/* Forms ------------------------------------------------------------------ */
+
+.field { display: block; margin-bottom: 12px; text-align: left; }
+.field > span {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+.field input {
+  width: 100%;
+  font: inherit;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+.field input:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
+
+.auth-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.auth-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 30px 32px;
+  width: min(94vw, 440px);
+}
+.auth-card h1 { font-size: 1.6rem; margin: 14px 0 4px; }
+
+/* Landing ---------------------------------------------------------------- */
+
+.hero {
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  margin-bottom: 26px;
+}
+/* Crop rather than letting a 16:9 painting push the whole page below the
+   fold; the offset keeps the cottage and driveway in frame. */
+.hero img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 56vh;
+  object-fit: cover;
+  object-position: 50% 42%;
+}
+.hero-body {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  padding: 4% 6%;
+  /* Keeps the headline readable over the painting at any crop. */
+  background: linear-gradient(
+    100deg,
+    rgba(28, 42, 33, 0.88) 0%,
+    rgba(28, 42, 33, 0.72) 38%,
+    rgba(28, 42, 33, 0.12) 68%,
+    rgba(28, 42, 33, 0) 100%
+  );
+  color: #fff;
+}
+.hero-body h1 {
+  font-size: clamp(1.7rem, 4.2vw, 3.1rem);
+  margin: 0;
+  max-width: 15ch;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+.hero-body p {
+  margin: 0;
+  max-width: 34ch;
+  font-size: clamp(0.85rem, 1.5vw, 1.1rem);
+  color: #f1ece0;
+}
+.hero-cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+.hero-cta .btn-ghost { background: rgba(255, 255, 255, 0.92); border-color: transparent; }
+@media (max-width: 700px) {
+  .hero-body {
+    position: static;
+    background: var(--bg-deep);
+    padding: 22px;
+  }
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.feature-grid h3 { margin: 0 0 4px; font-size: 1rem; }
+.feature-grid p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); }
+.feature-icon { font-size: 1.5rem; line-height: 1; margin-bottom: 8px; }
 
 /* ------------------------------------------------------- classroom staging */
 

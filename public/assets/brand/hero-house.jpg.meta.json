@@ -1,0 +1,17 @@
+{
+  "prompt_user": "Wide establishing shot of a cozy countryside Airbnb cottage at 8am on a bright summer morning, seen from the garden path. Two small cars parked on the gravel driveway, suitcases and a picnic basket waiting by the open front door, laundry basket on the porch step. Warm low morning sunlight, long soft shadows, dew on the grass, distant hills. No people, no text, no lettering.",
+  "prompt_sent": "Wide establishing shot of a cozy countryside Airbnb cottage at 8am on a bright summer morning, seen from the garden path. Two small cars parked on the gravel driveway, suitcases and a picnic basket waiting by the open front door, laundry basket on the porch step. Warm low morning sunlight, long soft shadows, dew on the grass, distant hills. No people, no text, no lettering.  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
+  "kind": "raster",
+  "preset": "ghibli",
+  "references": [
+    "public/assets/scene/house-cutaway.jpg"
+  ],
+  "alt": "A cozy countryside cottage at eight in the morning, two cars on the gravel driveway and luggage waiting by the open front door",
+  "provider": "gemini",
+  "model": "gemini-3-pro-image",
+  "aspect": "16:9",
+  "size": "2K",
+  "file": "hero-house.jpg",
+  "bytes": 2665228,
+  "created": "2026-08-27T16:00:04-0500"
+}

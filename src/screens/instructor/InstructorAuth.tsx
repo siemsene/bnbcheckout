@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../state/authStore';
+import { Logo } from '../../components/brand/Logo';
 
 export function InstructorAuth() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -42,8 +43,9 @@ export function InstructorAuth() {
   // Signed in but not (yet) an approved instructor.
   if (user) {
     return (
-      <div className="overlay" style={{ background: 'var(--bg)' }}>
-        <div className="overlay-card">
+      <div className="auth-wrap">
+        <div className="auth-card">
+          <Logo size={38} tagline="Instructor access" />
           <h1>Almost there</h1>
           {!user.emailVerified ? (
             <>
@@ -127,9 +129,9 @@ export function InstructorAuth() {
   }
 
   return (
-    <div className="overlay" style={{ background: 'var(--bg)' }}>
+    <div className="auth-wrap">
       <form
-        className="overlay-card"
+        className="auth-card"
         onSubmit={async (e) => {
           e.preventDefault();
           if (mode === 'register') {
@@ -139,37 +141,51 @@ export function InstructorAuth() {
           }
         }}
       >
-        <h1>Instructor {mode === 'login' ? 'sign in' : 'registration'}</h1>
+        <Link to="/" className="brand" aria-label="Checkout Rush home">
+          <Logo size={38} tagline="Instructor access" />
+        </Link>
+        <h1>{mode === 'login' ? 'Sign in' : 'Create your account'}</h1>
+        <p style={{ color: 'var(--ink-soft)', marginTop: 0, fontSize: '0.9rem' }}>
+          {mode === 'login'
+            ? 'Run sessions and watch the class leaderboard live.'
+            : 'You’ll verify your email, then the site admin approves your account.'}
+        </p>
         {registered ? (
           <p>Check your inbox for the verification link, then sign in.</p>
         ) : (
-          <div style={{ display: 'grid', gap: 12, margin: '18px auto', maxWidth: 340 }}>
+          <div style={{ margin: '18px 0' }}>
             {mode === 'register' && (
-              <input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your name"
-                required
-                style={inputStyle}
-              />
+              <label className="field">
+                <span>Your name</span>
+                <input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  autoComplete="name"
+                  required
+                />
+              </label>
             )}
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              required
-              style={inputStyle}
-            />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password (8+ characters)"
-              minLength={8}
-              required
-              style={inputStyle}
-            />
+            <label className="field">
+              <span>Email</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </label>
+            <label className="field">
+              <span>Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                minLength={8}
+                required
+              />
+            </label>
           </div>
         )}
         {error && (
@@ -178,7 +194,9 @@ export function InstructorAuth() {
           </p>
         )}
         {!registered && (
-          <button className="btn-big">{mode === 'login' ? 'Sign in' : 'Create account'}</button>
+          <button className="btn-big" style={{ width: '100%' }}>
+            {mode === 'login' ? 'Sign in' : 'Create account'}
+          </button>
         )}
         <p style={{ marginTop: 14, fontSize: '0.9rem' }}>
           {mode === 'login' ? (
@@ -201,10 +219,3 @@ export function InstructorAuth() {
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  fontSize: '1.05rem',
-  padding: '10px 12px',
-  borderRadius: 10,
-  border: '2px solid var(--line)',
-};

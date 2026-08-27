@@ -2,7 +2,10 @@
 // bootstrapped by the setAdminClaim callable (admin email only).
 
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../state/authStore';
+import { Shell } from '../../components/brand/Shell';
+import { Logo } from '../../components/brand/Logo';
 import { approveInstructor, setAdminClaim } from '../../firebase/callables';
 import { subscribeInstructors, type InstructorDoc } from '../../firebase/data';
 
@@ -58,13 +61,33 @@ export function AdminApprovals() {
   const others = users.filter((u) => u.status !== 'pending');
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: 24 }}>
-      <h1>Instructor approvals</h1>
-      <h2 style={{ margin: '18px 0 8px' }}>Pending ({pending.length})</h2>
-      <div style={{ display: 'grid', gap: 8 }}>
+    <Shell
+      tagline="Site admin"
+      nav={
+        <Link
+          to="/instructor"
+          className="btn-ghost"
+          style={{ padding: '8px 16px', borderRadius: 10, textDecoration: 'none' }}
+        >
+          My sessions
+        </Link>
+      }
+    >
+      <div className="page-head">
+        <h1>Instructor approvals</h1>
+        <p>Approved instructors can create sessions and run them with a class.</p>
+      </div>
+
+      <h2 style={{ fontSize: '1.05rem', margin: '0 0 10px' }}>
+        Waiting for you{' '}
+        <span className={`pill ${pending.length ? 'pill-warn' : 'pill-done'}`}>
+          {pending.length}
+        </span>
+      </h2>
+      <div style={{ display: 'grid', gap: 10, marginBottom: 28 }}>
         {pending.map((u) => (
-          <div key={u.uid} className="panel" style={{ display: 'flex', gap: 12, padding: 12, alignItems: 'center' }}>
-            <div style={{ flex: 1 }}>
+          <div key={u.uid} className="card card-row">
+            <div style={{ flex: 1, minWidth: 180 }}>
               <strong>{u.displayName}</strong>
               <div style={{ color: 'var(--ink-soft)', fontSize: '0.9rem' }}>{u.email}</div>
             </div>
@@ -75,7 +98,7 @@ export function AdminApprovals() {
                 await approveInstructor(u.uid, true).finally(() => setBusy(null));
               }}
             >
-              Approve
+              {busy === u.uid ? 'Working…' : '✓ Approve'}
             </button>
             <button
               className="btn-ghost"
@@ -89,27 +112,48 @@ export function AdminApprovals() {
             </button>
           </div>
         ))}
-        {pending.length === 0 && <p style={{ color: 'var(--ink-soft)' }}>Nothing pending.</p>}
+        {pending.length === 0 && (
+          <div className="card" style={{ textAlign: 'center', padding: '30px 20px' }}>
+            <div style={{ fontSize: '1.8rem' }} aria-hidden>
+              ✅
+            </div>
+            <p style={{ margin: '8px 0 0', color: 'var(--ink-soft)' }}>
+              Nothing pending — you’re all caught up.
+            </p>
+          </div>
+        )}
       </div>
-      <h2 style={{ margin: '18px 0 8px' }}>Processed</h2>
-      <div style={{ display: 'grid', gap: 6 }}>
+
+      <h2 style={{ fontSize: '1.05rem', margin: '0 0 10px' }}>Processed</h2>
+      <div style={{ display: 'grid', gap: 8 }}>
         {others.map((u) => (
-          <div key={u.uid} className="panel" style={{ display: 'flex', gap: 12, padding: 10 }}>
-            <span style={{ flex: 1 }}>
-              {u.displayName} — {u.email}
+          <div key={u.uid} className="card card-row" style={{ padding: '12px 16px' }}>
+            <span style={{ flex: 1, minWidth: 160 }}>
+              <strong>{u.displayName}</strong>{' '}
+              <span style={{ color: 'var(--ink-soft)' }}>— {u.email}</span>
             </span>
-            <span>{u.status === 'approved' ? '✓ approved' : '✗ rejected'}</span>
+            <span className={`pill ${u.status === 'approved' ? 'pill-live' : 'pill-warn'}`}>
+              {u.status === 'approved' ? '✓ approved' : '✗ rejected'}
+            </span>
           </div>
         ))}
+        {others.length === 0 && (
+          <p style={{ color: 'var(--ink-soft)', fontSize: '0.9rem' }}>
+            Nobody processed yet.
+          </p>
+        )}
       </div>
-    </div>
+    </Shell>
   );
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="overlay" style={{ background: 'var(--bg)' }}>
-      <div className="overlay-card">{children}</div>
+    <div className="auth-wrap">
+      <div className="auth-card" style={{ textAlign: 'center' }}>
+        <Logo size={38} tagline="Site admin" />
+        {children}
+      </div>
     </div>
   );
 }
