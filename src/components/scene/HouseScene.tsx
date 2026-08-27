@@ -148,7 +148,7 @@ export function HouseScene() {
         return (
           <button
             key={c}
-            className={`scene-char ${state.activity} ${animClass}`}
+            className={`scene-char ${state.activity} ${animClass}${act.nudgeable ? ' needs-nudge' : ''}`}
             style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
             title={tip}
             aria-label={`${CHARACTERS[c].name} — ${act.label}`}
