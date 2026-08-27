@@ -468,6 +468,49 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 .ticker-rework { color: var(--accent-warm); }
 .ticker-warn { color: var(--danger); font-weight: 700; }
 
+/* ------------------------------------------------------- classroom staging */
+
+.planning-bar {
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #fdf3dd;
+  flex-wrap: wrap;
+}
+.ready-badge {
+  font-weight: 700;
+  color: #0ca30c;
+  background: #eaf7ea;
+  border: 2px solid #0ca30c;
+  border-radius: 999px;
+  padding: 6px 16px;
+}
+.countdown-overlay {
+  background: rgba(24, 38, 30, 0.82);
+}
+.countdown-number {
+  font-family: var(--font-display);
+  font-size: 8rem;
+  line-height: 1;
+  font-weight: 700;
+  margin: 8px 0;
+}
+.roster-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.82rem;
+  background: #fff;
+}
+.roster-chip.is-ready {
+  border-color: #0ca30c;
+  background: #eaf7ea;
+}
+
 /* ----------------------------------------------------------------- overlay */
 
 .overlay {

@@ -17,6 +17,7 @@ let testEnv: RulesTestEnvironment;
 const SID = "sess1";
 const CODE = "ABC234";
 const PID = "player1";
+const LEGACY_PID = "player-legacy"; // same owner, no `ready` field
 const STUDENT = "stu-1"; // owns player1
 const OTHER = "stu-2";
 const INSTRUCTOR = "teach-1";
@@ -33,10 +34,12 @@ async function seed() {
       code: CODE,
       instructorUid: INSTRUCTOR,
       title: "Test session",
-      status: "running",
+      status: "planning",
       createdAt: new Date(),
       playerCount: 1,
-      settings: { simDeadlineMin: 120, compression: 8 },
+      runStartsAt: new Date(Date.now() - 60_000),
+      readyCount: 0,
+      settings: { simDeadlineMin: 120, compression: 8, planningMinutes: 5 },
     });
     await setDoc(doc(db, "sessions", SID, "names", "alice"), {
       playerId: PID,
@@ -46,6 +49,23 @@ async function seed() {
     });
     await setDoc(doc(db, "sessions", SID, "players", PID), {
       name: "Alice",
+      uid: STUDENT,
+      joinedAt: new Date(),
+      phase: "running",
+      simMinute: 10,
+      pctComplete: 0.25,
+      utilizationAvg: 0.5,
+      finished: false,
+      finishSimMinute: null,
+      score: 0,
+      seed: 12345,
+      ready: false,
+      lastWriteAt: new Date(),
+    });
+    // A player doc created before `ready` existed — the get(k, default) form in
+    // the rule must keep this one writable by its owner.
+    await setDoc(doc(db, "sessions", SID, "players", LEGACY_PID), {
+      name: "Legacy",
       uid: STUDENT,
       joinedAt: new Date(),
       phase: "running",
@@ -146,6 +166,33 @@ describe("players/{pid}", () => {
     );
   });
 
+  it("owner cannot mark themselves ready — that would start the whole room", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertFails(
+      updateDoc(
+        doc(db, "sessions", SID, "players", PID),
+        playerUpdate({ ready: true })
+      )
+    );
+  });
+
+  it("owner may keep reporting progress alongside an unchanged ready flag", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertSucceeds(
+      updateDoc(
+        doc(db, "sessions", SID, "players", PID),
+        playerUpdate({ ready: false })
+      )
+    );
+  });
+
+  it("a player doc predating the ready field is still writable by its owner", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, "sessions", SID, "players", LEGACY_PID), playerUpdate())
+    );
+  });
+
   it("another student cannot write someone else's player doc", async () => {
     const db = testEnv.authenticatedContext(OTHER).firestore();
     await assertFails(
@@ -204,6 +251,93 @@ describe("sessions/{sid}", () => {
         playerCount: 0,
         settings: { simDeadlineMin: 120, compression: 8 },
       })
+    );
+  });
+
+  it("instructor may rename their session", async () => {
+    const db = testEnv
+      .authenticatedContext(INSTRUCTOR, { instructor: true })
+      .firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        title: "Renamed",
+      })
+    );
+  });
+
+  it("instructor may end their session directly (escape hatch)", async () => {
+    const db = testEnv
+      .authenticatedContext(INSTRUCTOR, { instructor: true })
+      .firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        status: "ended",
+        endedAt: new Date(),
+      })
+    );
+  });
+
+  it("instructor cannot stamp the run timing — only the callable may", async () => {
+    const db = testEnv
+      .authenticatedContext(INSTRUCTOR, { instructor: true })
+      .firestore();
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        runStartsAt: new Date(),
+      })
+    );
+  });
+
+  it("instructor cannot move the stage by writing status directly", async () => {
+    // Seeded as 'planning'; only a transition to 'ended' is allowed from here.
+    const db = testEnv
+      .authenticatedContext(INSTRUCTOR, { instructor: true })
+      .firestore();
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        status: "running",
+      })
+    );
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        status: "lobby",
+      })
+    );
+  });
+
+  it("instructor cannot rewrite the server-maintained counters or settings", async () => {
+    const db = testEnv
+      .authenticatedContext(INSTRUCTOR, { instructor: true })
+      .firestore();
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        readyCount: 99,
+      })
+    );
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        playerCount: 99,
+      })
+    );
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        settings: { simDeadlineMin: 1, compression: 240, planningMinutes: 1 },
+      })
+    );
+  });
+
+  it("student cannot write the session doc at all", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID), { status: "ended" })
     );
   });
 

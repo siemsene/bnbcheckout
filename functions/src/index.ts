@@ -17,6 +17,28 @@ const ADMIN_EMAIL = "siemsene@gmail.com";
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
 
+/** Default planning-stage cap, in minutes. Mirrors the client constant. */
+const DEFAULT_PLANNING_MINUTES = 5;
+/**
+ * Milliseconds of "starting in 5… 4… 3…" between a start trigger and the run.
+ * Generous enough to cover a cold callable round-trip, so the student who
+ * pressed Ready last still sees a countdown rather than an instant start.
+ */
+const COUNTDOWN_MS = 5_000;
+
+/**
+ * True once the room's clock is running. The stage boundary is the
+ * `runStartsAt` instant, not the advisory `status` field.
+ */
+function hasRunStarted(session: admin.firestore.DocumentData): boolean {
+  if (session.status === "lobby") return false;
+  const startsAt =
+    session.runStartsAt instanceof Timestamp
+      ? session.runStartsAt.toMillis()
+      : null;
+  return startsAt != null && Date.now() >= startsAt;
+}
+
 // ---------------------------------------------------------------------------
 // 1. onInstructorRegistered — notify the admin when a new instructor signs up.
 // ---------------------------------------------------------------------------
@@ -147,6 +169,12 @@ export const createSession = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "Expected { title: string }.");
   }
 
+  const rawPlanning = request.data?.planningMinutes;
+  const planningMinutes =
+    typeof rawPlanning === "number" && Number.isFinite(rawPlanning)
+      ? Math.min(30, Math.max(1, Math.round(rawPlanning)))
+      : DEFAULT_PLANNING_MINUTES;
+
   const instructorUid = request.auth.uid;
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -171,7 +199,9 @@ export const createSession = onCall(async (request) => {
           status: "lobby",
           createdAt: FieldValue.serverTimestamp(),
           playerCount: 0,
-          settings: { simDeadlineMin: 120, compression: 8 },
+          runStartsAt: null,
+          readyCount: 0,
+          settings: { simDeadlineMin: 120, compression: 8, planningMinutes },
         });
       });
       return { sessionId: sessionRef.id, code };
@@ -248,6 +278,16 @@ export const joinSession = onCall(async (request) => {
     const nameRef = sessionRef.collection("names").doc(nameLower);
     const nameSnap = await tx.get(nameRef);
 
+    // A brand-new name cannot enter a run that is already under way — they'd
+    // be dropped into a half-finished morning. Rejoins (below) still work,
+    // since that is how a student who refreshed gets back to their own run.
+    if (!nameSnap.exists && hasRunStarted(session)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This session's simulation has already started."
+      );
+    }
+
     if (nameSnap.exists) {
       // REBIND: same display name reclaims the existing player slot.
       const ticket = nameSnap.data()!;
@@ -262,7 +302,13 @@ export const joinSession = onCall(async (request) => {
       tx.update(nameRef, { uid });
       tx.update(playerRef, { uid });
 
-      return { sessionId, playerId, seed, rejoined: true };
+      return {
+        sessionId,
+        playerId,
+        seed,
+        rejoined: true,
+        serverNowMs: Date.now(),
+      };
     }
 
     // New player.
@@ -292,14 +338,226 @@ export const joinSession = onCall(async (request) => {
       finishSimMinute: null,
       score: 0,
       seed,
+      ready: false,
       lastWriteAt: FieldValue.serverTimestamp(),
     });
     tx.update(sessionRef, {
       playerCount: FieldValue.increment(1),
     });
 
-    return { sessionId, playerId, seed, rejoined: false };
+    return {
+      sessionId,
+      playerId,
+      seed,
+      rejoined: false,
+      serverNowMs: Date.now(),
+    };
   });
+});
+
+// ---------------------------------------------------------------------------
+// 5b. markReady — a student finishes planning. The only writer of `ready`.
+// ---------------------------------------------------------------------------
+
+/**
+ * Counting the ready players inside the transaction is what makes the
+ * last-student-ready race safe: two simultaneous calls cannot both observe
+ * "not everyone is ready yet" and leave the run unstarted.
+ */
+export const markReady = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in (anonymous is fine) first.");
+  }
+  const uid = request.auth.uid;
+
+  const sessionId = request.data?.sessionId;
+  const playerId = request.data?.playerId;
+  if (typeof sessionId !== "string" || typeof playerId !== "string") {
+    throw new HttpsError(
+      "invalid-argument",
+      "Expected { sessionId: string, playerId: string }."
+    );
+  }
+
+  const sessionRef = db.collection("sessions").doc(sessionId);
+  const playersRef = sessionRef.collection("players");
+  const playerRef = playersRef.doc(playerId);
+
+  return db.runTransaction(async (tx) => {
+    const [sessionSnap, playerSnap, playersSnap] = await Promise.all([
+      tx.get(sessionRef),
+      tx.get(playerRef),
+      tx.get(playersRef),
+    ]);
+
+    if (!sessionSnap.exists) {
+      throw new HttpsError("not-found", "Session no longer exists.");
+    }
+    if (!playerSnap.exists) {
+      throw new HttpsError("not-found", "Player no longer exists.");
+    }
+    if (playerSnap.data()!.uid !== uid) {
+      throw new HttpsError("permission-denied", "That is not your player slot.");
+    }
+
+    const session = sessionSnap.data()!;
+    if (session.status === "ended") {
+      throw new HttpsError("failed-precondition", "This session has ended.");
+    }
+    if (session.status === "lobby") {
+      throw new HttpsError(
+        "failed-precondition",
+        "Planning has not been opened yet."
+      );
+    }
+
+    const existingMs =
+      session.runStartsAt instanceof Timestamp
+        ? session.runStartsAt.toMillis()
+        : null;
+    const now = Date.now();
+
+    // Count with this call's own write folded in — the snapshot predates it.
+    let readyCount = 0;
+    playersSnap.forEach((d) => {
+      if (d.id === playerId || d.data().ready === true) readyCount++;
+    });
+    const playerCount = playersSnap.size;
+    const allReady = playerCount > 0 && readyCount === playerCount;
+
+    // The run is already going: readiness is moot, but still answer with the
+    // clock so a retrying client can correct its offset.
+    if (existingMs != null && now >= existingMs) {
+      return {
+        readyCount,
+        playerCount,
+        allReady,
+        runStartsAtMs: existingMs,
+        serverNowMs: now,
+      };
+    }
+
+    tx.update(playerRef, {
+      ready: true,
+      readyAt: FieldValue.serverTimestamp(),
+      phase: "planning",
+    });
+
+    let runStartsAtMs = existingMs;
+    if (allReady) {
+      const soon = now + COUNTDOWN_MS;
+      // Never push the start later than it already is — only pull it forward.
+      // This invariant is what keeps concurrent callers safe.
+      if (existingMs == null || soon < existingMs) {
+        runStartsAtMs = soon;
+        tx.update(sessionRef, { runStartsAt: Timestamp.fromMillis(soon) });
+      }
+    }
+
+    return {
+      readyCount,
+      playerCount,
+      allReady,
+      runStartsAtMs,
+      serverNowMs: now,
+    };
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5c. sessionControl — the instructor's stage transitions.
+// ---------------------------------------------------------------------------
+
+/**
+ * All run timing is stamped here rather than on the instructor's machine: a
+ * skewed instructor clock would otherwise be baked into the one timestamp every
+ * student derives their stage and sim-clock from.
+ */
+export const sessionControl = onCall(async (request) => {
+  if (request.auth?.token?.instructor !== true) {
+    throw new HttpsError("permission-denied", "Instructor privileges required.");
+  }
+  const sessionId = request.data?.sessionId;
+  const action = request.data?.action;
+  if (
+    typeof sessionId !== "string" ||
+    (action !== "openPlanning" && action !== "startNow" && action !== "end")
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Expected { sessionId: string, action: 'openPlanning'|'startNow'|'end' }."
+    );
+  }
+
+  const sessionRef = db.collection("sessions").doc(sessionId);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(sessionRef);
+    if (!snap.exists) throw new HttpsError("not-found", "Session not found.");
+    const session = snap.data()!;
+    if (session.instructorUid !== request.auth!.uid) {
+      throw new HttpsError("permission-denied", "Not your session.");
+    }
+
+    const now = Date.now();
+    const existingMs =
+      session.runStartsAt instanceof Timestamp
+        ? session.runStartsAt.toMillis()
+        : null;
+    let status = session.status as string;
+    let runStartsAtMs = existingMs;
+
+    if (action === "end") {
+      status = "ended";
+      tx.update(sessionRef, {
+        status: "ended",
+        endedAt: FieldValue.serverTimestamp(),
+      });
+    } else if (action === "openPlanning") {
+      if (session.status !== "lobby") {
+        throw new HttpsError(
+          "failed-precondition",
+          "Planning has already been opened."
+        );
+      }
+      const minutes =
+        typeof session.settings?.planningMinutes === "number"
+          ? session.settings.planningMinutes
+          : DEFAULT_PLANNING_MINUTES;
+      // The countdown cap IS the fallback start instant, so expiry needs no
+      // actor: every client simply crosses it on its own.
+      runStartsAtMs = now + minutes * 60_000;
+      status = "planning";
+      tx.update(sessionRef, {
+        status: "planning",
+        planningOpenedAt: FieldValue.serverTimestamp(),
+        runStartsAt: Timestamp.fromMillis(runStartsAtMs),
+      });
+    } else {
+      // startNow
+      if (session.status !== "planning") {
+        throw new HttpsError("failed-precondition", "Planning is not open.");
+      }
+      const soon = now + COUNTDOWN_MS;
+      if (existingMs == null || soon < existingMs) {
+        runStartsAtMs = soon;
+        tx.update(sessionRef, { runStartsAt: Timestamp.fromMillis(soon) });
+      }
+    }
+
+    return { status, runStartsAtMs, serverNowMs: now };
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5d. getServerTime — lets a client correct its own clock skew.
+// ---------------------------------------------------------------------------
+
+export const getServerTime = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in first.");
+  }
+  return { serverNowMs: Date.now() };
 });
 
 // ---------------------------------------------------------------------------

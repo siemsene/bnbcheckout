@@ -4,7 +4,14 @@ import { CHARACTERS, CHAR_IDS } from '../../engine/content';
 import { CHAR_META } from '../../content/charMeta';
 import { useSimStore } from '../../state/simStore';
 
-export function Lobby() {
+export function Lobby({
+  canBegin = true,
+  waitingMessage,
+}: {
+  /** Practice starts planning on demand; a class waits for the instructor. */
+  canBegin?: boolean;
+  waitingMessage?: string;
+}) {
   const beginPlanning = useSimStore((s) => s.beginPlanning);
 
   return (
@@ -32,9 +39,15 @@ export function Lobby() {
           distractions. Click a distracted friend to nudge them (it costs you a
           moment of your own work).
         </p>
-        <button className="btn-big" onClick={beginPlanning}>
-          Plan the morning →
-        </button>
+        {canBegin ? (
+          <button className="btn-big" onClick={beginPlanning}>
+            Plan the morning →
+          </button>
+        ) : (
+          <p className="panel" style={{ padding: '12px 16px', margin: 0 }} role="status">
+            {waitingMessage ?? 'Waiting for your instructor to open planning…'}
+          </p>
+        )}
       </div>
     </div>
   );

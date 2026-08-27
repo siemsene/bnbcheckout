@@ -11,6 +11,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
@@ -18,13 +19,28 @@ import { auth, db } from './client';
 import type { Checkpoint } from '../engine/serialize';
 import type { ResultSummary } from '../engine/scoring';
 
+export interface SessionSettings {
+  simDeadlineMin: number;
+  compression: number;
+  /** Minutes the planning stage may run before the sim starts regardless. */
+  planningMinutes: number;
+}
+
 export interface SessionDoc {
   id: string;
   code: string;
   instructorUid: string;
   title: string;
-  status: 'lobby' | 'running' | 'ended';
+  /** 'planning' and 'running' are advisory; the real stage boundary is
+   * `runStartsAt` (see stageOf) so no client has to be awake at the moment. */
+  status: 'lobby' | 'planning' | 'running' | 'ended';
   playerCount: number;
+  /** The instant the whole room's clock starts. Absolute, server-stamped. */
+  runStartsAt?: Timestamp | null;
+  settings?: SessionSettings;
+  createdAt?: Timestamp;
+  startedAt?: Timestamp;
+  endedAt?: Timestamp;
 }
 
 export interface PlayerDoc {
@@ -39,6 +55,41 @@ export interface PlayerDoc {
   finishSimMinute: number | null;
   score: number;
   seed: number;
+  /** Set only by the markReady callable; clients are blocked by rules. */
+  ready?: boolean;
+}
+
+export const DEFAULT_PLANNING_MINUTES = 5;
+
+/** "Starting in 5… 4… 3…" window before the run, mirrored in functions. */
+export const COUNTDOWN_MS = 5_000;
+
+export type Stage = 'lobby' | 'planning' | 'countdown' | 'running' | 'ended';
+
+/**
+ * The room's stage, derived rather than broadcast: every client computes the
+ * same answer from the same timestamp, so refreshers and late arrivals can't
+ * miss the transition.
+ *
+ * `status` records what a human authority explicitly did; which side of
+ * `runStartsAt` we are on is pure arithmetic. Legacy docs may carry
+ * `status: 'running'` — treated as an alias for 'planning'. Nothing writes it
+ * any more: doing so would re-introduce the "somebody must be awake at the
+ * transition instant" problem this design removes.
+ */
+export function stageOf(session: SessionDoc | null, nowMs: number): Stage {
+  if (!session) return 'lobby';
+  if (session.status === 'ended') return 'ended';
+  if (session.status === 'lobby') return 'lobby';
+  const startsAt = session.runStartsAt?.toMillis();
+  if (startsAt == null) return 'planning';
+  if (nowMs >= startsAt) return 'running';
+  return nowMs >= startsAt - COUNTDOWN_MS ? 'countdown' : 'planning';
+}
+
+/** True once a player's own run is over, however it ended. */
+export function playerIsDone(p: PlayerDoc): boolean {
+  return p.phase === 'finished' || p.phase === 'abandoned';
 }
 
 export async function ensureAnonAuth(): Promise<string> {
@@ -151,6 +202,11 @@ export async function setSessionStatus(
     ...(status === 'ended' ? { endedAt: serverTimestamp() } : {}),
   });
 }
+
+// Stage transitions are NOT written from here — they go through the
+// `sessionControl` callable so the server stamps the timing. An instructor
+// clock that is minutes off would otherwise be baked into the one timestamp
+// every student derives their stage and sim-clock from.
 
 // --- admin ----------------------------------------------------------------
 

@@ -11,10 +11,19 @@ import {
   loadCheckpoint,
   saveCheckpoint,
   saveResult,
+  subscribePlayers,
+  subscribeSession,
   writeProgress,
+  type PlayerDoc,
   type ProgressUpdate,
+  type SessionDoc,
+  type Stage,
 } from '../firebase/data';
-import { joinSession } from '../firebase/callables';
+import {
+  getServerTime,
+  joinSession,
+  markReady as markReadyCallable,
+} from '../firebase/callables';
 import { firebaseEnabled } from '../firebase/client';
 import { useSimStore, type GamePhase } from './simStore';
 
@@ -36,16 +45,37 @@ interface SessionStore {
   joining: boolean;
   error: string | null;
 
+  /** Live session doc + roster, so stage logic has one source of truth. */
+  session: SessionDoc | null;
+  players: PlayerDoc[];
+  /** serverNow - clientNow, from the last callable. Corrects a skewed clock. */
+  serverOffsetMs: number;
+  /** This player's own ready flag (optimistic; server owns the real one). */
+  ready: boolean;
+  readyPending: boolean;
+  readyError: string | null;
+
   join(code: string, name: string): Promise<boolean>;
   /** Restore identity from localStorage (call on mount of /session route). */
   restore(): StoredIdentity | null;
   leave(): void;
 
+  /** Subscribe to the session doc and roster. Returns cleanup. */
+  watchSession(sessionId: string): () => void;
+  /** Server-corrected wall clock. */
+  now(): number;
+  /** Re-measure the server clock offset (used on resume). */
+  syncClock(): Promise<void>;
+  /** Tell the server this player has finished planning. */
+  markReady(): Promise<void>;
+
   /** Wire progress reporting onto the running sim store. Returns cleanup. */
   attachReporting(): () => void;
   /** Try to resume from a server checkpoint; returns true if resumed. */
-  resumeFromCheckpoint(): Promise<boolean>;
+  resumeFromCheckpoint(stage: Stage): Promise<boolean>;
   reportNow(phase: GamePhase): void;
+  /** Force a checkpoint write now (used at the end of planning). */
+  checkpointNow(): void;
 }
 
 let lastProgressAt = 0;
@@ -57,6 +87,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   uid: null,
   joining: false,
   error: null,
+  session: null,
+  players: [],
+  serverOffsetMs: 0,
+  ready: false,
+  readyPending: false,
+  readyError: null,
 
   async join(code, name) {
     if (!firebaseEnabled) {
@@ -75,7 +111,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         seed: res.seed,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
-      set({ identity, uid, joining: false });
+      set({
+        identity,
+        uid,
+        joining: false,
+        serverOffsetMs: res.serverNowMs - Date.now(),
+      });
       return true;
     } catch (e) {
       const msg =
@@ -103,7 +144,62 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   leave() {
     localStorage.removeItem(STORAGE_KEY);
-    set({ identity: null });
+    set({ identity: null, session: null, players: [], ready: false });
+  },
+
+  watchSession(sessionId) {
+    const stopSession = subscribeSession(sessionId, (session) => set({ session }));
+    const stopPlayers = subscribePlayers(sessionId, (players) => {
+      const playerId = get().identity?.playerId;
+      const me = players.find((p) => p.id === playerId);
+      // The server's flag wins once it lands; until then keep the optimistic one.
+      set({ players, ready: me?.ready === true || get().ready });
+    });
+    return () => {
+      stopSession();
+      stopPlayers();
+    };
+  },
+
+  now() {
+    return Date.now() + get().serverOffsetMs;
+  },
+
+  /** A student who refreshes never calls join(), so sample the clock directly.
+   * Non-blocking: planning lasts minutes, so the correction always lands in
+   * time, and an uncorrected clock is only wrong by that client's own skew. */
+  async syncClock() {
+    try {
+      const serverNowMs = await getServerTime();
+      set({ serverOffsetMs: serverNowMs - Date.now() });
+    } catch {
+      /* keep the existing offset */
+    }
+  },
+
+  async markReady() {
+    const { identity, readyPending } = get();
+    if (!identity || readyPending) return;
+    set({ readyPending: true, ready: true, readyError: null }); // optimistic
+    try {
+      const res = await markReadyCallable(identity.sessionId, identity.playerId);
+      set({ serverOffsetMs: res.serverNowMs - Date.now() });
+    } catch (e) {
+      // Never fail silently here: the student pressed a button and the whole
+      // room may be waiting on them.
+      set({
+        ready: false,
+        readyError:
+          e instanceof Error && /permission-denied/.test(e.message)
+            ? 'This browser lost your place in the session. Rejoin with the same code and name.'
+            : 'Could not tell the class you’re ready — try again.',
+      });
+    } finally {
+      set({ readyPending: false });
+    }
+    get().reportNow('planning');
+    // Commit the staged plan so a refresh before the run keeps it.
+    get().checkpointNow();
   },
 
   attachReporting() {
@@ -169,18 +265,32 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     };
   },
 
-  async resumeFromCheckpoint() {
+  /**
+   * A tick-0 checkpoint is a real one: planning assignments are applied by
+   * `applyOnly`, which never advances the tick, so rejecting tick 0 (as this
+   * used to) is exactly what threw away a student's staged plan on refresh.
+   *
+   * A live run is restored as 'planning', never 'running' — SessionGame
+   * promotes it once the clock anchor is in place, so there is never a frame of
+   * un-anchored ticking that would desync this client from the room.
+   */
+  async resumeFromCheckpoint(stage) {
     const { identity } = get();
     if (!identity) return false;
     try {
       const cp = await loadCheckpoint(identity.sessionId, identity.playerId);
-      if (!cp || cp.tick === 0) return false;
+      if (!cp) return false;
+      // Guard against a checkpoint left over from a different session that
+      // shares this browser's stored identity.
+      if (cp.seed !== identity.seed) return false;
       const state = deserialize(cp);
       if (!state) return false;
+      const phase: GamePhase =
+        state.outcome !== 'running' ? 'done' : stage === 'lobby' ? 'lobby' : 'planning';
       useSimStore.setState({
         sim: state,
         version: 1,
-        phase: state.outcome === 'running' ? 'running' : 'done',
+        phase,
         paused: false,
         bubbles: [],
         ticker: [],
@@ -190,6 +300,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     } catch {
       return false;
     }
+  },
+
+  checkpointNow() {
+    const sim = useSimStore.getState().sim;
+    const { identity, uid } = get();
+    if (!sim || !identity || !uid) return;
+    lastCheckpointAt = Date.now();
+    void saveCheckpoint(
+      identity.sessionId,
+      identity.playerId,
+      uid,
+      serialize(sim),
+    ).catch(() => {});
   },
 
   reportNow(phase) {

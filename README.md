@@ -55,13 +55,30 @@ Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
 
 - Instructors register at `/instructor/auth` → verify email → you approve them
   at `/admin` (they're emailed on approval).
-- An approved instructor creates a session → projects the 6-letter code from
-  the session monitor.
-- Students open the site, enter code + a made-up name (no account), and play.
-  Same code + name resumes a run (any device).
-- The monitor shows the live leaderboard and the **hidden-constraint summary**
-  for the debrief. "End session" reveals the winners and the class
-  utilization-vs-time scatter to everyone, and offers a CSV export.
+- An approved instructor creates a session (choosing a planning-stage length) →
+  projects the 6-letter code from the session monitor.
+- Students open the site, enter code + a made-up name (no account). Same code +
+  name resumes a run (any device).
+
+A class session runs in **two room-wide stages**:
+
+1. **Planning** — the instructor presses *Open planning*, which starts the
+   countdown. Students stage their assignments with the clock frozen and press
+   *I'm ready*; the monitor shows a live "N of M ready" roster.
+2. **Simulation** — starts for the whole room at the same instant: the moment
+   the last student is ready, when the instructor presses *Start now*, or when
+   the countdown expires, whichever comes first. **Nobody can pause it.** Every
+   client derives its sim-clock from one server timestamp, so a refreshed or
+   backgrounded tab catches up to the room rather than drifting behind.
+
+Students who finish early get a waiting room with the live leaderboard; their
+own results stay locked until the whole class is done, so they can't broadcast
+the hidden constraints to classmates still playing. The monitor also carries the
+**hidden-constraint summary** for the debrief. "End session" stops every
+student's clock immediately, reveals the winners and the class
+utilization-vs-time scatter, and offers a CSV export.
+
+Practice mode (`/play`) is unchanged: solo, self-paced, and pausable.
 
 ### Emulator tests
 
@@ -80,5 +97,11 @@ Keyboard path for every interaction (chips and task cards are focusable;
 click-to-assign works without drag), `prefers-reduced-motion` honored
 everywhere (sprites stop animating, confetti is skipped), color is never the
 only signal (status icons + text badges + aria labels), an aria-live event
-ticker mirrors all speech bubbles, pause is always available, and the
-celebration stays far below the 3-flashes-per-second limit.
+ticker mirrors all speech bubbles, and the celebration stays far below the
+3-flashes-per-second limit.
+
+Pause is always available in practice mode. It is deliberately **absent during a
+classroom run**, where the whole room shares one clock that no single student can
+stop — so anyone who needs to work at their own pace, or to step away mid-run,
+should use `/play` rather than a live session. The classroom run is bounded
+(~15 real minutes) and the instructor can end it at any time.

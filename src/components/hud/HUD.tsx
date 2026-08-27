@@ -1,5 +1,6 @@
-// Top bar: sim clock (8:00 -> 10:00 AM), deadline bar, overall progress,
-// pause (always visible during the run).
+// Top bar: sim clock (8:00 -> 10:00 AM), deadline bar, overall progress, and
+// pause — always available in practice, but absent during a synchronized
+// classroom run, where the room shares one clock that nobody may stop.
 
 import { SIM_DEADLINE_TICKS } from '../../engine/content';
 import { pctComplete } from '../../engine/scoring';
@@ -17,6 +18,7 @@ export function HUD() {
   const sim = useSimStore((s) => s.sim);
   const paused = useSimStore((s) => s.paused);
   const phase = useSimStore((s) => s.phase);
+  const pauseAllowed = useSimStore((s) => s.pauseAllowed);
   const setPaused = useSimStore((s) => s.setPaused);
   if (!sim) return null;
 
@@ -42,7 +44,7 @@ export function HUD() {
       <div className="hud-progress" aria-live="off">
         {pct}% done
       </div>
-      {phase === 'running' && (
+      {pauseAllowed && phase === 'running' && (
         <button onClick={() => setPaused(!paused)} aria-pressed={paused}>
           {paused ? '▶ Resume' : '⏸ Pause'}
         </button>

@@ -15,9 +15,10 @@ import { AssignmentBoard } from '../../components/board/AssignmentBoard';
 import { HouseScene } from '../../components/scene/HouseScene';
 import { HUD } from '../../components/hud/HUD';
 import { EventTicker } from '../../components/hud/EventTicker';
+import { PracticePlanningBar } from '../../components/hud/PlanningBar';
 import type { CharId } from '../../engine/types';
 
-export function SimScreen() {
+export function SimScreen({ planningBar }: { planningBar?: React.ReactNode }) {
   useSimLoop();
   const phase = useSimStore((s) => s.phase);
   const startClock = useSimStore((s) => s.startClock);
@@ -42,26 +43,8 @@ export function SimScreen() {
   return (
     <div className="sim-layout">
       <HUD />
-      {phase === 'planning' && (
-        <div
-          className="panel"
-          style={{
-            padding: '8px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            background: '#fdf3dd',
-          }}
-        >
-          <strong>Planning time</strong>
-          <span style={{ color: 'var(--ink-soft)', flex: 1 }}>
-            The clock is frozen. Stage your first assignments, then start the morning.
-          </span>
-          <button className="btn-big" onClick={startClock}>
-            ▶ Start the clock
-          </button>
-        </div>
-      )}
+      {phase === 'planning' &&
+        (planningBar ?? <PracticePlanningBar onStart={startClock} />)}
       <div className="sim-main">
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
           <AssignmentBoard />

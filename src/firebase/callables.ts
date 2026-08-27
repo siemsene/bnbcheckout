@@ -8,6 +8,8 @@ export interface JoinSessionResult {
   playerId: string;
   seed: number;
   rejoined: boolean;
+  /** Server wall-clock at join, so the client can correct its own clock. */
+  serverNowMs: number;
 }
 
 export async function joinSession(code: string, name: string): Promise<JoinSessionResult> {
@@ -18,12 +20,60 @@ export async function joinSession(code: string, name: string): Promise<JoinSessi
   return (await fn({ code, name })).data;
 }
 
-export async function createSession(title: string): Promise<{ sessionId: string; code: string }> {
-  const fn = httpsCallable<{ title: string }, { sessionId: string; code: string }>(
+export async function createSession(
+  title: string,
+  planningMinutes?: number,
+): Promise<{ sessionId: string; code: string }> {
+  const fn = httpsCallable<
+    { title: string; planningMinutes?: number },
+    { sessionId: string; code: string }
+  >(fns(), 'createSession');
+  return (await fn({ title, planningMinutes })).data;
+}
+
+export interface MarkReadyResult {
+  readyCount: number;
+  playerCount: number;
+  allReady: boolean;
+  /** Millis since epoch when the room's run starts (null while unset). */
+  runStartsAtMs: number | null;
+  serverNowMs: number;
+}
+
+export async function markReady(
+  sessionId: string,
+  playerId: string,
+): Promise<MarkReadyResult> {
+  const fn = httpsCallable<{ sessionId: string; playerId: string }, MarkReadyResult>(
     fns(),
-    'createSession',
+    'markReady',
   );
-  return (await fn({ title })).data;
+  return (await fn({ sessionId, playerId })).data;
+}
+
+export interface SessionControlResult {
+  status: string;
+  runStartsAtMs: number | null;
+  serverNowMs: number;
+}
+
+export async function sessionControl(
+  sessionId: string,
+  action: 'openPlanning' | 'startNow' | 'end',
+): Promise<SessionControlResult> {
+  const fn = httpsCallable<
+    { sessionId: string; action: string },
+    SessionControlResult
+  >(fns(), 'sessionControl');
+  return (await fn({ sessionId, action })).data;
+}
+
+export async function getServerTime(): Promise<number> {
+  const fn = httpsCallable<Record<string, never>, { serverNowMs: number }>(
+    fns(),
+    'getServerTime',
+  );
+  return (await fn({})).data.serverNowMs;
 }
 
 export async function approveInstructor(uid: string, approve: boolean): Promise<void> {

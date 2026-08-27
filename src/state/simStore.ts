@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { createRun } from '../engine/init';
 import { applyOnly, step } from '../engine/step';
-import { CHAR_IDS, TASK_BY_ID } from '../engine/content';
+import { CHAR_IDS, SIM_DEADLINE_TICKS, TASK_BY_ID } from '../engine/content';
 import { AMBIENT, bubbleText, BUBBLES } from '../content/bubbles';
 import type { Action, CharId, SimEvent, SimState } from '../engine/types';
 
@@ -34,6 +34,21 @@ let ticksPerRealSecond = 8;
 export function setSimSpeed(tps: number) {
   ticksPerRealSecond = Math.max(1, Math.min(240, tps));
 }
+export function getSimSpeed() {
+  return ticksPerRealSecond;
+}
+
+/** Real milliseconds a full run lasts at the current speed (15 min at 8 tps). */
+export function runWallClockMs() {
+  return (SIM_DEADLINE_TICKS / ticksPerRealSecond) * 1000;
+}
+
+/** Max ticks stepped in one advance() call, so a long stall can't freeze the
+ * tab with a single enormous burst. Successive frames keep converging. */
+const CATCHUP_CAP = 1200;
+
+/** Above this many ticks in one call we're fast-forwarding, not playing. */
+const BURST_TICKS = 300;
 
 interface SimStore {
   sim: SimState | null;
@@ -45,6 +60,20 @@ interface SimStore {
   /** Click-to-assign fallback: currently selected character (or null). */
   selected: CharId | null;
   setSelected(c: CharId | null): void;
+  /**
+   * Classroom mode: the wall-clock instant (in *client* clock terms) that the
+   * room's run began. When set, sim time is a function of this absolute anchor
+   * rather than of accumulated deltas, so a refreshed, throttled or slow client
+   * converges back to the room's shared sim-time instead of drifting behind.
+   * null in practice mode, which keeps the accumulate path.
+   */
+  clockAnchorMs: number | null;
+  setClockAnchor(ms: number | null): void;
+  /** False during a synchronized classroom run — nobody may pause. */
+  pauseAllowed: boolean;
+  setPauseAllowed(allowed: boolean): void;
+  /** Stop the run where it stands (instructor ended the session). */
+  haltRun(): void;
   /** Called after each real-second batch of ticks; Firebase layer hooks in here. */
   onTicked?: (sim: SimState) => void;
 
@@ -69,9 +98,23 @@ export const useSimStore = create<SimStore>((set, get) => ({
   bubbles: [],
   ticker: [],
   selected: null,
+  clockAnchorMs: null,
+  pauseAllowed: true,
 
   setSelected(c) {
     set({ selected: c });
+  },
+
+  setClockAnchor(ms) {
+    set({ clockAnchorMs: ms });
+  },
+
+  setPauseAllowed(allowed) {
+    set({ pauseAllowed: allowed, ...(allowed ? {} : { paused: false }) });
+  },
+
+  haltRun() {
+    set({ phase: 'done', paused: false, clockAnchorMs: null });
   },
 
   newGame(seed) {
@@ -84,6 +127,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       bubbles: [],
       ticker: [],
       selected: null,
+      clockAnchorMs: null,
     });
   },
 
@@ -97,6 +141,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   },
 
   setPaused(p) {
+    if (!get().pauseAllowed) return; // synchronized run: the clock is the clock
     set({ paused: p });
   },
 
@@ -114,17 +159,35 @@ export const useSimStore = create<SimStore>((set, get) => ({
   },
 
   advance(realMs) {
-    const { sim, phase, paused } = get();
+    const { sim, phase, paused, clockAnchorMs } = get();
     if (!sim || phase !== 'running' || paused || sim.outcome !== 'running') return;
 
-    tickRemainder += (realMs / 1000) * ticksPerRealSecond;
-    let ticks = Math.floor(tickRemainder);
-    tickRemainder -= ticks;
+    let ticks: number;
+    if (clockAnchorMs != null) {
+      // Anchored (classroom): sim time is a pure function of wall-clock since
+      // the room started, so every client targets the same tick regardless of
+      // how much time it personally missed.
+      const target = Math.floor(
+        ((Date.now() - clockAnchorMs) / 1000) * ticksPerRealSecond,
+      );
+      ticks = target - sim.tick;
+      if (ticks <= 0) return; // ahead of the room (or not started): idle
+    } else {
+      // Unanchored (practice): accumulate elapsed unpaused wall-clock.
+      tickRemainder += (realMs / 1000) * ticksPerRealSecond;
+      ticks = Math.floor(tickRemainder);
+      tickRemainder -= ticks;
+    }
     // Catch-up cap: recover fully from background-tab throttling (browsers
     // throttle rAF/timers when hidden) but bound the worst-case burst.
-    if (ticks > 1200) ticks = 1200;
+    if (ticks > CATCHUP_CAP) ticks = CATCHUP_CAP;
 
     if (ticks === 0) return;
+    // A big burst means we're fast-forwarding (a resumed or throttled client
+    // catching up to the room). Replaying minutes of chatter as live bubbles
+    // would bury the player, so the ticker carries that history instead.
+    const burst = ticks > BURST_TICKS;
+
     const allEvents: SimEvent[] = [];
     for (let i = 0; i < ticks; i++) {
       const actions = pendingActions.splice(0);
@@ -132,11 +195,11 @@ export const useSimStore = create<SimStore>((set, get) => ({
       allEvents.push(...events);
       if (sim.outcome !== 'running') break;
     }
-    ingestEvents(sim, allEvents, set, get);
+    ingestEvents(sim, allEvents, set, get, burst);
 
     // Ambient chatter: someone pipes up every couple of sim-minutes (UI-only
     // flavor — never engine state, so replays are unaffected).
-    if (sim.outcome === 'running' && sim.tick > 0 && sim.tick % 150 < ticks) {
+    if (!burst && sim.outcome === 'running' && sim.tick > 0 && sim.tick % 150 < ticks) {
       const slot = Math.floor(sim.tick / 150);
       const charId = CHAR_IDS[slot % CHAR_IDS.length];
       const lines = AMBIENT[charId];
@@ -165,20 +228,36 @@ export const useSimStore = create<SimStore>((set, get) => ({
   reset() {
     tickRemainder = 0;
     pendingActions.length = 0;
-    set({ sim: null, version: 0, phase: 'lobby', paused: false, bubbles: [], ticker: [] });
+    set({
+      sim: null,
+      version: 0,
+      phase: 'lobby',
+      paused: false,
+      bubbles: [],
+      ticker: [],
+      clockAnchorMs: null,
+      pauseAllowed: true,
+    });
   },
 }));
 
 const pendingActions: Action[] = [];
 
 // Dev-only hook so tests and debugging can reach the store from the console.
-if (import.meta.env.DEV) {
+if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__simStore = useSimStore;
 }
 
 type Set = (fn: (s: SimStore) => Partial<SimStore>) => void;
 
-function ingestEvents(sim: SimState, events: SimEvent[], set: Set, _get: () => SimStore) {
+function ingestEvents(
+  sim: SimState,
+  events: SimEvent[],
+  set: Set,
+  _get: () => SimStore,
+  /** Fast-forwarding: record to the ticker, but don't pop stale bubbles. */
+  suppressBubbles = false,
+) {
   if (events.length === 0) return;
   const now = Date.now();
   const newBubbles: ActiveBubble[] = [];
@@ -245,12 +324,14 @@ function ingestEvents(sim: SimState, events: SimEvent[], set: Set, _get: () => S
   if (newBubbles.length || newTicker.length) {
     set((s) => ({
       // Keep at most one live bubble per character (newest wins).
-      bubbles: [
-        ...s.bubbles.filter(
-          (b) => !newBubbles.some((n) => n.charId && n.charId === b.charId),
-        ),
-        ...newBubbles,
-      ].slice(-8),
+      bubbles: suppressBubbles
+        ? s.bubbles
+        : [
+            ...s.bubbles.filter(
+              (b) => !newBubbles.some((n) => n.charId && n.charId === b.charId),
+            ),
+            ...newBubbles,
+          ].slice(-8),
       ticker: [...s.ticker, ...newTicker].slice(-60),
     }));
   }

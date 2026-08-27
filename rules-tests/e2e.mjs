@@ -225,6 +225,102 @@ async function main() {
     playerDoc3.exists() && playerDoc3.data().uid === kid2Uid
   );
 
+  // ------------------------------------------------------------- Step 6.5
+  console.log("--- Step 6.5: two-stage classroom flow ---");
+
+  // A second, separate session so the readiness maths is unambiguous.
+  const stageRes = await createSession({ title: "Staged", planningMinutes: 1 });
+  const stageId = stageRes.data?.sessionId;
+  const stageCode = stageRes.data?.code;
+  const stageRef = doc(instrCtx.db, "sessions", stageId);
+
+  let d = (await getDoc(stageRef)).data();
+  check("createSession stored planningMinutes", d.settings?.planningMinutes === 1);
+  check("new session starts in lobby with no runStartsAt", d.status === "lobby" && !d.runStartsAt);
+
+  const aCtx = makeCtx("stageA");
+  await signInAnonymously(aCtx.auth);
+  const bCtx = makeCtx("stageB");
+  await signInAnonymously(bCtx.auth);
+  const joinA = await httpsCallable(aCtx.fns, "joinSession")({ code: stageCode, name: "Ana" });
+  const joinB = await httpsCallable(bCtx.fns, "joinSession")({ code: stageCode, name: "Ben" });
+  const aId = joinA.data.playerId;
+  const bId = joinB.data.playerId;
+  check("joinSession returns serverNowMs for clock correction",
+    typeof joinA.data.serverNowMs === "number");
+
+  const readyA = httpsCallable(aCtx.fns, "markReady");
+  const readyB = httpsCallable(bCtx.fns, "markReady");
+
+  await expectError(
+    "markReady before planning opens is rejected",
+    () => readyA({ sessionId: stageId, playerId: aId }),
+    "failed-precondition"
+  );
+
+  const control = httpsCallable(instrCtx.fns, "sessionControl");
+  await control({ sessionId: stageId, action: "openPlanning" });
+  d = (await getDoc(stageRef)).data();
+  const plannedStart = d.runStartsAt.toMillis();
+  check("openPlanning sets status + a ~1min runStartsAt",
+    d.status === "planning" && Math.abs(plannedStart - Date.now() - 60_000) < 15_000,
+    `delta=${plannedStart - Date.now()}`);
+
+  // The countdown cap IS the fallback start, so one ready student must not move it.
+  await readyA({ sessionId: stageId, playerId: aId });
+  d = (await getDoc(stageRef)).data();
+  check("one of two ready leaves the start time alone",
+    d.runStartsAt.toMillis() === plannedStart);
+  check("markReady set the player's ready flag",
+    (await getDoc(doc(aCtx.db, "sessions", stageId, "players", aId))).data().ready === true);
+
+  // Idempotent: pressing Ready twice must not double-count.
+  await readyA({ sessionId: stageId, playerId: aId });
+  d = (await getDoc(stageRef)).data();
+  check("repeat markReady is idempotent (start still unmoved)",
+    d.runStartsAt.toMillis() === plannedStart);
+
+  await expectError(
+    "markReady on someone else's player slot is denied",
+    () => readyB({ sessionId: stageId, playerId: aId }),
+    "permission-denied"
+  );
+
+  await expectError(
+    "student cannot set ready directly (rules)",
+    () => updateDoc(doc(bCtx.db, "sessions", stageId, "players", bId), { ready: true }),
+    "permission-denied"
+  );
+
+  // The last student readying pulls the whole room's start forward.
+  const readyRes = await readyB({ sessionId: stageId, playerId: bId });
+  check("last ready reports allReady", readyRes.data?.allReady === true);
+  d = (await getDoc(stageRef)).data();
+  check("all ready pulls runStartsAt forward",
+    d.runStartsAt.toMillis() < plannedStart,
+    `was ${plannedStart}, now ${d.runStartsAt.toMillis()}`);
+
+  await expectError(
+    "instructor cannot stamp runStartsAt directly (rules)",
+    () => updateDoc(stageRef, { instructorUid: instrUid, runStartsAt: new Date() }),
+    "permission-denied"
+  );
+
+  // Wait out the short countdown, then check the join gate.
+  const startsAt = d.runStartsAt.toMillis();
+  await new Promise((r) => setTimeout(r, Math.max(0, startsAt - Date.now()) + 500));
+
+  const cCtx = makeCtx("stageC");
+  await signInAnonymously(cCtx.auth);
+  await expectError(
+    "a NEW name cannot join a run already under way",
+    () => httpsCallable(cCtx.fns, "joinSession")({ code: stageCode, name: "Latecomer" }),
+    "failed-precondition"
+  );
+  const rejoinA = await httpsCallable(aCtx.fns, "joinSession")({ code: stageCode, name: "Ana" });
+  check("but a REJOIN still works mid-run (the refresh path)",
+    rejoinA.data?.rejoined === true && rejoinA.data?.playerId === aId);
+
   // ---------------------------------------------------------------- Step 7
   console.log("--- Step 7: progress writes ---");
   const ownerPlayerRef = doc(kid2Ctx.db, ...playerPath);

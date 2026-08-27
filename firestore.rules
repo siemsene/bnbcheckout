@@ -34,9 +34,19 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if isInstructor()
         && request.resource.data.instructorUid == request.auth.uid;
+      // The owning instructor may edit their session, but NOT the run timing or
+      // the server-maintained counters: `runStartsAt` is the single timestamp
+      // every student derives their stage and sim-clock from, so it is stamped
+      // by the sessionControl/markReady functions or not at all. Ending the
+      // session directly stays allowed as an escape hatch.
       allow update: if isInstructor()
         && resource.data.instructorUid == request.auth.uid
-        && request.resource.data.instructorUid == request.auth.uid;
+        && request.resource.data.instructorUid == request.auth.uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['runStartsAt', 'readyCount', 'playerCount', 'code',
+                      'settings', 'createdAt', 'planningOpenedAt'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+            || request.resource.data.status == 'ended');
       allow delete: if false;
 
       // Name tickets — written only by the joinSession function.
@@ -51,13 +61,17 @@ service cloud.firestore {
         // Created only by the joinSession function.
         allow create: if false;
         // Owner may update their own summary; identity and seed are immutable
-        // and the sim clock can only move forward.
+        // and the sim clock can only move forward. `ready` is control flow, not
+        // a display value — it can start the whole room's run — so only the
+        // markReady function may set it. The get(k, default) form keeps player
+        // docs created before this field existed writable.
         allow update: if signedIn()
           && request.auth.uid == resource.data.uid
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.name == resource.data.name
           && request.resource.data.seed == resource.data.seed
-          && request.resource.data.simMinute >= resource.data.simMinute;
+          && request.resource.data.simMinute >= resource.data.simMinute
+          && request.resource.data.get('ready', false) == resource.data.get('ready', false);
         allow delete: if false;
 
         // Private per-player docs (checkpoint, result).
