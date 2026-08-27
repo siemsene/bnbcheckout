@@ -61,7 +61,9 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
   const sender = MAIL_SENDER.value() || ADMIN_EMAIL;
 
   if (!apiKey) {
-    logger.warn("SMTP2GO_API_KEY unset — skipping email", { to, subject });
+    // `sender` is logged so the From address can be confirmed from the logs
+    // without having to send anything.
+    logger.warn("SMTP2GO_API_KEY unset — skipping email", { to, subject, sender });
     return;
   }
 
