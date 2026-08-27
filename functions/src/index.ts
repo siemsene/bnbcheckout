@@ -1,17 +1,27 @@
 /**
  * Cloud Functions for Checkout Rush.
  *
- * firebase-functions v2 API, Node 20, region us-central1 (default).
+ * firebase-functions v2 API, Node 22, region us-central1 (default).
+ *
+ * firebase-admin v14 removed the namespaced API, so everything here uses the
+ * modular entry points (getFirestore / getAuth) rather than admin.firestore()
+ * and admin.auth().
  */
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import * as admin from "firebase-admin";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import {
+  getFirestore,
+  FieldValue,
+  Timestamp,
+  type DocumentData,
+} from "firebase-admin/firestore";
 
-admin.initializeApp();
+initializeApp();
 
-const db = admin.firestore();
+const db = getFirestore();
 
 const ADMIN_EMAIL = "siemsene@gmail.com";
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -30,7 +40,7 @@ const COUNTDOWN_MS = 5_000;
  * True once the room's clock is running. The stage boundary is the
  * `runStartsAt` instant, not the advisory `status` field.
  */
-function hasRunStarted(session: admin.firestore.DocumentData): boolean {
+function hasRunStarted(session: DocumentData): boolean {
   if (session.status === "lobby") return false;
   const startsAt =
     session.runStartsAt instanceof Timestamp
@@ -91,14 +101,14 @@ export const approveInstructor = onCall(async (request) => {
   const userData = userSnap.data() ?? {};
 
   // Merge the instructor claim without clobbering any other claims.
-  const authUser = await admin.auth().getUser(uid);
+  const authUser = await getAuth().getUser(uid);
   const claims: Record<string, unknown> = { ...(authUser.customClaims ?? {}) };
   if (approve) {
     claims.instructor = true;
   } else {
     delete claims.instructor;
   }
-  await admin.auth().setCustomUserClaims(uid, claims);
+  await getAuth().setCustomUserClaims(uid, claims);
 
   await userRef.update({
     status: approve ? "approved" : "rejected",
@@ -140,10 +150,10 @@ export const setAdminClaim = onCall(async (request) => {
     );
   }
 
-  const authUser = await admin.auth().getUser(request.auth.uid);
+  const authUser = await getAuth().getUser(request.auth.uid);
   const claims: Record<string, unknown> = { ...(authUser.customClaims ?? {}) };
   claims.admin = true;
-  await admin.auth().setCustomUserClaims(request.auth.uid, claims);
+  await getAuth().setCustomUserClaims(request.auth.uid, claims);
 
   return { admin: true };
 });
