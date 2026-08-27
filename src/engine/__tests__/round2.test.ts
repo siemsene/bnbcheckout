@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRun } from '../init';
 import { personalMult, step } from '../step';
-import { MUSIC_BOOST, NO_LIST_MULT, VACUUM_PENALTY } from '../content';
+import { INTERRUPT_MAX_TICKS, MUSIC_BOOST, NO_LIST_MULT, VACUUM_PENALTY } from '../content';
 import type { Action, ScheduledEvent, SimEvent, SimState } from '../types';
 
 function run(state: SimState, ticks: number, actions: Action[] = []): SimEvent[] {
@@ -98,6 +98,19 @@ describe('new chaos events', () => {
     expect(personalMult(s, 'kenji')).toBeCloseTo(1.3 * MUSIC_BOOST, 2);
     run(s, 400); // music over
     expect(personalMult(s, 'kenji')).toBeCloseTo(1.3, 2);
+  });
+
+  it('an un-nudged interruption ends on its own after at most 5 sim-minutes', () => {
+    const events: ScheduledEvent[] = [
+      { at: 100, type: 'distraction', charId: 'mei', maxDuration: 8 * 60 },
+    ];
+    const s = createRun(31, { events });
+    run(s, 1, [{ type: 'assign', charId: 'mei', taskId: 'strip-beds' }]);
+    s.tasks['strip-beds'].workRequired = 100000; // keep the task alive
+    run(s, 150);
+    expect(s.chars.mei.activity).toBe('distracted');
+    run(s, INTERRUPT_MAX_TICKS); // well past the cap, well short of 8 min
+    expect(s.chars.mei.activity).toBe('working');
   });
 
   it('the doorbell traps a character until nudged', () => {

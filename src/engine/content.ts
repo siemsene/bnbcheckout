@@ -340,6 +340,10 @@ export const FIND_ITEM_TASKS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Chaos-event tuning (all times drawn at init)
 
+/** Un-nudged interruptions (calls, distractions, doorbell) self-resolve after
+ * at most this long — nudging is a shortcut, never the only way back to work. */
+export const INTERRUPT_MAX_TICKS = 5 * 60;
+
 export const EVENT_TUNING = {
   kenjiPhone: { firstMin: [8, 14], gapMin: [10, 14], durationMin: [3, 5], count: 6 },
   meiDistraction: { firstMin: [5, 10], gapMin: [8, 12], maxDurationMin: 8, count: 8 },

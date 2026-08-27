@@ -12,6 +12,7 @@ import {
   FOUND_ITEM_THRESHOLD_OTHERS,
   HANGRY_MULT,
   HANGRY_TICK,
+  INTERRUPT_MAX_TICKS,
   LEARNING_RAMP_TICKS,
   LEARNING_START_FRACTION,
   MUSIC_BOOST,
@@ -201,7 +202,7 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
         const c = state.chars[ev.charId];
         if (c.activity === 'toilet') break; // priorities
         c.activity = 'oncall';
-        c.unavailableUntil = tick + ev.duration;
+        c.unavailableUntil = tick + Math.min(ev.duration, INTERRUPT_MAX_TICKS);
         bubble(state, events, ev.charId, 'phone-start', true);
         break;
       }
@@ -209,7 +210,7 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
         const c = state.chars[ev.charId];
         if (c.activity !== 'working' && c.activity !== 'idle') break;
         c.activity = 'distracted';
-        c.unavailableUntil = tick + ev.maxDuration;
+        c.unavailableUntil = tick + Math.min(ev.maxDuration, INTERRUPT_MAX_TICKS);
         bubble(state, events, ev.charId, 'distracted-start', true);
         break;
       }
@@ -238,7 +239,7 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
         const c = state.chars[ev.charId];
         if (c.activity === 'toilet' || c.activity === 'oncall') break;
         c.activity = 'distracted'; // stuck at the door until nudged (or it ends)
-        c.unavailableUntil = tick + ev.duration;
+        c.unavailableUntil = tick + Math.min(ev.duration, INTERRUPT_MAX_TICKS);
         bubble(state, events, ev.charId, 'doorbell', true);
         break;
       }

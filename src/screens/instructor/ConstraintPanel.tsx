@@ -17,7 +17,7 @@ const CHARACTER_NOTES: { name: string; skills: string; quirks: string }[] = [
   {
     name: 'Mei',
     skills: 'Great cook (1.8×), knows snacks (1.4× shopping). No license.',
-    quirks: 'Gets distracted every ~8–12 min; drifts up to 8 min unless nudged.',
+    quirks: 'Gets distracted every ~8–12 min; drifts until nudged (or ~5 min).',
   },
   {
     name: 'Taro',
@@ -108,7 +108,9 @@ export function ConstraintPanel() {
         sim-min on non-travel tasks · multi-worker efficiency 1 / 1.7 / 2.1 ·
         skipping breakfast makes everyone 0.8× after minute 60 · nudging = Sora
         walks over (~40s), chats (~20s), walks back — she produces nothing en
-        route · the final walkthrough sometimes finds one last forgotten item (40%).
+        route · un-nudged interruptions (calls, distractions, doorbell) end on
+        their own after at most 5 min — nudging just recovers the time sooner ·
+        the final walkthrough sometimes finds one last forgotten item (40%).
       </p>
       <p style={{ fontSize: '0.85rem', color: 'var(--ink-soft)' }}>
         Random events per run: Kenji’s boss calls (~6×) · Mei drifts off (~8×) ·
