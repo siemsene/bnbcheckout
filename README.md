@@ -16,7 +16,7 @@ working **in parallel**.
 ```bash
 npm install
 npm run dev          # open http://localhost:5173 → "Practice run"
-npm test             # engine invariants + balance guards (26 tests)
+npm test             # engine invariants + balance guards (101 tests)
 ```
 
 Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
@@ -70,8 +70,11 @@ Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
 
 ### Running a class
 
-- Instructors register at `/instructor/auth` → verify email → you approve them
-  at `/admin` (they're emailed on approval).
+- Instructors register at `/instructor/auth` with their name and **university
+  affiliation** → verify email → you approve them at `/admin` (they're emailed
+  on approval). The affiliation shows on each approval card and in the
+  notification email. Accounts predating the field show "No affiliation on
+  file"; the admin can fill it in inline from `/admin`.
 - An approved instructor creates a session (choosing a planning-stage length) →
   projects the 6-letter code from the session monitor.
 - Students open the site, enter code + a made-up name (no account). Same code +
@@ -107,6 +110,89 @@ npx firebase-tools emulators:exec --only auth,firestore,functions --project demo
 
 Needs a JRE 11+ on PATH for the emulators, and on some machines
 `NODE_OPTIONS=--dns-result-order=ipv4first`.
+
+If the functions emulator reports **"Failed to load function definition from
+source … Cannot determine backend specification. Timeout after 10000"** — and
+every callable then 404s with `functions/not-found` — the code is fine; the
+emulator's 10-second discovery handshake is not. It shows up when the host Node
+is newer than the `engines.node` the functions declare. Raise the window:
+
+```bash
+export FUNCTIONS_DISCOVERY_TIMEOUT=90
+```
+
+### Testing a whole class by yourself
+
+```
+npm run classroom
+```
+
+Starts the emulators and the dev server, seeds an approved instructor and a
+session, and prints the two URLs plus the sign-in and the join code. Ctrl+C
+stops everything it started. Options: `--format single|two-run`,
+`--students N` (extra pre-joined players).
+
+Open the instructor at `/instructor` and each student at `/join` in **separate
+tabs of the same browser**. That works because `.env.development.local` sets
+`VITE_TAB_SCOPED_AUTH=1`, which makes dev builds keep the signed-in user in
+per-tab session storage instead of browser-wide IndexedDB.
+
+Without it two tabs cannot hold two roles: Firebase shares one signed-in user
+across every tab of an origin, so signing in as the instructor replaces a
+student's anonymous session — and because `ensureAnonAuth` reuses
+`currentUser`, a student tab opened behind a signed-in instructor joins the
+room **as the instructor**. The flag is gated on `import.meta.env.DEV` as well,
+so production keeps normal persistence and a closed tab never signs a student
+out. Set it to `0` to exercise production's behaviour locally.
+
+A run lasts fifteen real minutes, so to reach the later stages without waiting:
+
+```
+node scripts/dev_stage.mjs <sessionId> running
+#   stages: planning | running | review1 | plan2 | running2
+node scripts/dev_seed_run1.mjs <sessionId>   # plausible run-1 results
+```
+
+### Running the app against the emulators
+
+Put the emulator config in **`.env.development.local`** — not `.env.local`.
+
+Vite reads `.env.local` in *every* mode, including `vite build`, so an emulator
+flag left there gets compiled into the production bundle: the deployed site then
+calls `connectAuthEmulator('http://127.0.0.1:9099')` in every visitor's browser
+and all sign-in fails. `.env.development.local` is only read by `vite dev`.
+`vite.config.ts` refuses to build if emulator or `demo-` settings are in scope,
+and `src/firebase/client.ts` ignores the flag outside a dev build.
+
+The project id must match the `--project` the emulators run under, or callables
+resolve to the wrong path:
+
+```
+VITE_USE_EMULATORS=1
+VITE_FIREBASE_PROJECT_ID=demo-checkout
+VITE_FIREBASE_API_KEY=fake-api-key
+VITE_FIREBASE_AUTH_DOMAIN=demo-checkout.firebaseapp.com
+VITE_FIREBASE_APP_ID=1:0:web:0
+VITE_FIREBASE_MESSAGING_SENDER_ID=0
+VITE_FIREBASE_STORAGE_BUCKET=demo-checkout.appspot.com
+```
+
+Then `npx firebase-tools emulators:start --only auth,firestore,functions
+--project demo-checkout` alongside `npm run dev`. A `demo-` prefixed project id
+never contacts Google, so this cannot touch a real deployment.
+
+### If sign-in fails on the deployed site
+
+Check what the deployed bundle was built against before suspecting the account:
+
+```
+curl -s https://<your-site>.web.app/assets/index-*.js | grep -c 127.0.0.1
+```
+
+Anything other than `0` means the build picked up emulator config and the site
+is talking to the visitor's own localhost. Rebuild with `.env` in scope and
+redeploy. Sign-in errors now name the real cause (network, configuration,
+provider disabled) rather than reporting everything as a bad password.
 
 ## Accessibility
 
