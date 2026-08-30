@@ -133,17 +133,23 @@ stops everything it started. Options: `--format single|two-run`,
 `--students N` (extra pre-joined players).
 
 Open the instructor at `/instructor` and each student at `/join` in **separate
-tabs of the same browser**. That works because `.env.development.local` sets
-`VITE_TAB_SCOPED_AUTH=1`, which makes dev builds keep the signed-in user in
-per-tab session storage instead of browser-wide IndexedDB.
+tabs of the same browser** — this works on the deployed site too, not just
+locally.
 
-Without it two tabs cannot hold two roles: Firebase shares one signed-in user
-across every tab of an origin, so signing in as the instructor replaces a
-student's anonymous session — and because `ensureAnonAuth` reuses
-`currentUser`, a student tab opened behind a signed-in instructor joins the
-room **as the instructor**. The flag is gated on `import.meta.env.DEV` as well,
-so production keeps normal persistence and a closed tab never signs a student
-out. Set it to `0` to exercise production's behaviour locally.
+Firebase shares one signed-in user across every tab of an origin, and one Auth
+instance holds one user. So without help, a student joining in a second tab
+replaces the shared record and the instructor tab drops to signed-out; or, if
+the instructor's session has already rehydrated there, `ensureAnonAuth` reuses
+`currentUser` and the student joins the room **as the instructor**.
+
+`wantsTabScopedAuth` in `src/firebase/client.ts` splits this by route: student
+pages (`/join`, `/session`, `/play`) keep their user in per-tab session
+storage, while instructor and admin pages keep normal browser-wide persistence
+so signing in once still lasts. A student who closes the tab rejoins with the
+same code and name — `joinSession` rebinds the player to the new uid.
+
+The one gap is navigating instructor → student inside a single tab, where Auth
+already exists; open the student page in a new tab.
 
 A run lasts fifteen real minutes, so to reach the later stages without waiting:
 

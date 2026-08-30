@@ -8,13 +8,11 @@
  * an approved instructor and a session, then prints the URLs and credentials.
  * Ctrl+C stops everything it started.
  *
- * Why a plain `npm run dev` is not enough: Firebase persists the signed-in user
- * in IndexedDB, which every tab of an origin shares. Signing in as the
- * instructor would replace a student's anonymous session — and because
- * `ensureAnonAuth` reuses `currentUser`, a student tab opened behind a
- * signed-in instructor joins the room AS the instructor. So
- * `.env.development.local` sets VITE_TAB_SCOPED_AUTH=1, which switches dev
- * builds to per-tab (session) persistence and gives each tab its own identity.
+ * Open the student in a NEW TAB. Student pages keep their signed-in user in
+ * per-tab session storage (see wantsTabScopedAuth in src/firebase/client.ts),
+ * so joining never disturbs the instructor signed in elsewhere in the same
+ * browser. That split is production behaviour, not a dev-only switch, so what
+ * you see here is what the deployed site does.
  *
  * Emulator-only by construction: a `demo-` project id never contacts Google.
  */

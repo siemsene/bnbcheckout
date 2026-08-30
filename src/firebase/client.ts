@@ -34,26 +34,39 @@ const config = {
 
 export const firebaseEnabled = Boolean(config.apiKey && config.projectId);
 
+/** Routes a student uses. Everything else is instructor/admin territory. */
+const STUDENT_ROUTE = /^\/(join|session|play)(\/|$)/;
+
 /**
- * Scope the signed-in user to the browser TAB rather than the whole browser.
+ * Should THIS page keep its signed-in user in the tab rather than the browser?
  *
- * Firebase persists auth in IndexedDB, which every tab of an origin shares —
- * so signing in as an instructor in one tab and joining as a student in
- * another does not work: the second sign-in replaces the first. Worse,
- * `ensureAnonAuth` reuses `currentUser` when there is one, so a student tab
- * opened behind a signed-in instructor joins the room AS the instructor.
+ * Firebase persists auth in IndexedDB, which every tab of an origin shares, and
+ * one Auth instance holds one user. So a student joining in a second tab calls
+ * signInAnonymously, replaces the single shared record, and the instructor tab
+ * sees an anonymous user and drops to signed-out. (If the instructor's session
+ * has already rehydrated in that tab, the other failure happens instead:
+ * `ensureAnonAuth` reuses `currentUser`, and the student joins the room AS the
+ * instructor, writing the instructor's uid onto the player doc.)
  *
- * Session persistence is per-tab, so each tab gets its own identity and one
- * browser can hold an instructor and any number of students at once. It
- * survives reload (so the rejoin path still works) but not closing the tab.
+ * Splitting by route rather than by build fixes both, in production as well as
+ * dev, and asymmetrically — which is what makes it cheap:
  *
- * Development only, and gated on `import.meta.env.DEV` as well as the flag so
- * it cannot reach a deployment where students would be signed out by a closed
- * tab. Real persistence is what production uses; turn the flag off in
- * `.env.development.local` to exercise that locally.
+ *   - student pages use per-tab session persistence, so joining never touches
+ *     the instructor's IndexedDB record. A student who closes the tab rejoins
+ *     with the same code and name; joinSession rebinds the player to the new
+ *     uid, which is a path that already existed and is covered by the e2e.
+ *   - instructor and admin pages keep normal browser-wide persistence, so
+ *     signing in once still lasts across tabs and restarts.
+ *
+ * Evaluated when Auth is constructed rather than at module load, so a student
+ * who lands on `/` and clicks through to `/join` is judged by where they end
+ * up. The one gap is navigating instructor -> student inside a single tab,
+ * where Auth already exists: open the student page in a new tab.
  */
-const tabScopedAuth =
-  import.meta.env.DEV && import.meta.env.VITE_TAB_SCOPED_AUTH === '1';
+function wantsTabScopedAuth(): boolean {
+  if (typeof location === 'undefined') return false;
+  return STUDENT_ROUTE.test(location.pathname);
+}
 
 let app: FirebaseApp | null = null;
 let authInst: Auth | null = null;
@@ -68,7 +81,7 @@ function ensureApp(): FirebaseApp {
     // Auth is constructed here, before anything can reach for it, because
     // initializeAuth() throws if the app already has an Auth instance — so the
     // persistence choice has to be made at the single point of construction.
-    authInst = tabScopedAuth
+    authInst = wantsTabScopedAuth()
       ? initializeAuth(app, { persistence: browserSessionPersistence })
       : getAuth(app);
 
