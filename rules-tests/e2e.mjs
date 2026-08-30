@@ -131,6 +131,7 @@ async function main() {
   await setDoc(doc(instrCtx.db, "users", instrUid), {
     email: "instructor@example.com",
     displayName: "Dr. Test",
+    affiliation: "University College Dublin",
     status: "pending",
     createdAt: serverTimestamp(),
   });
@@ -139,6 +140,27 @@ async function main() {
     "instructor users doc created as pending",
     instrDoc.exists() && instrDoc.data().status === "pending"
   );
+  check(
+    "affiliation stored on registration",
+    instrDoc.data().affiliation === "University College Dublin"
+  );
+
+  // Accounts predating the affiliation field, and profiles rebuilt by the
+  // client's repair path, carry none — the admin fills those in from /admin,
+  // which needs `allow update: if isAdmin()` to accept the write.
+  await expectError(
+    "instructor cannot edit their own affiliation",
+    () =>
+      updateDoc(doc(instrCtx.db, "users", instrUid), {
+        affiliation: "Self-Declared University",
+      }),
+    "permission-denied"
+  );
+  await updateDoc(doc(adminCtx.db, "users", instrUid), {
+    affiliation: "UW-Madison",
+  });
+  const edited = await getDoc(doc(instrCtx.db, "users", instrUid));
+  check("admin can set affiliation", edited.data().affiliation === "UW-Madison");
 
   await expectError(
     "mail collection unreadable by clients",

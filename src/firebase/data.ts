@@ -19,11 +19,27 @@ import { auth, db } from './client';
 import type { Checkpoint } from '../engine/serialize';
 import type { ResultSummary } from '../engine/scoring';
 
+/**
+ * How many runs this session is. 'single' is the original format and stays the
+ * default; 'two-run' adds a planning stage and a second run after the first.
+ * Practice mode has neither and is unaffected by any of it.
+ */
+export type SessionFormat = 'single' | 'two-run';
+
+/** What run 2 faces: the identical morning, or the same job on a different day. */
+export type ReplayScenario = 'sameSeed' | 'newChaos';
+
 export interface SessionSettings {
   simDeadlineMin: number;
   compression: number;
   /** Minutes the planning stage may run before the sim starts regardless. */
   planningMinutes: number;
+  /** Absent on sessions created before two-run existed — treat as 'single'. */
+  format?: SessionFormat;
+  /** Only meaningful when format is 'two-run'. Defaults to 'sameSeed'. */
+  replayScenario?: ReplayScenario;
+  /** Minutes the between-runs planning stage may run. */
+  planMinutes?: number;
 }
 
 export interface SessionDoc {
@@ -37,6 +53,13 @@ export interface SessionDoc {
   playerCount: number;
   /** The instant the whole room's clock starts. Absolute, server-stamped. */
   runStartsAt?: Timestamp | null;
+  /**
+   * Two-run only. When the plan stage opened, and when run 2 starts. Both are
+   * server-stamped for the same reason `runStartsAt` is: every client derives
+   * its own stage from them, so a skewed instructor clock must never get in.
+   */
+  planOpensAt?: Timestamp | null;
+  run2StartsAt?: Timestamp | null;
   settings?: SessionSettings;
   createdAt?: Timestamp;
   startedAt?: Timestamp;
@@ -55,6 +78,8 @@ export interface PlayerDoc {
   finishSimMinute: number | null;
   score: number;
   seed: number;
+  /** Which run this row describes. Absent on single-run sessions (implicitly 1). */
+  round?: 1 | 2;
   /** Set only by the markReady callable; clients are blocked by rules. */
   ready?: boolean;
 }
@@ -64,7 +89,34 @@ export const DEFAULT_PLANNING_MINUTES = 5;
 /** "Starting in 5… 4… 3…" window before the run, mirrored in functions. */
 export const COUNTDOWN_MS = 5_000;
 
-export type Stage = 'lobby' | 'planning' | 'countdown' | 'running' | 'ended';
+export type Stage =
+  | 'lobby'
+  | 'planning'
+  | 'countdown'
+  | 'running'
+  /** Run 1 is over; results are up and the room waits for the instructor. */
+  | 'review1'
+  /** The plan board is open between the two runs. */
+  | 'plan2'
+  | 'countdown2'
+  | 'running2'
+  | 'ended';
+
+/** Which run a stage belongs to. */
+export function roundOf(stage: Stage): 1 | 2 {
+  return stage === 'plan2' || stage === 'countdown2' || stage === 'running2' ? 2 : 1;
+}
+
+export function isTwoRun(session: SessionDoc | null): boolean {
+  return session?.settings?.format === 'two-run';
+}
+
+/** Wall-clock milliseconds one full run lasts for this session's compression. */
+export function runWindowMs(session: SessionDoc | null): number {
+  const deadlineMin = session?.settings?.simDeadlineMin ?? 120;
+  const compression = session?.settings?.compression ?? 8;
+  return ((deadlineMin * 60) / compression) * 1000;
+}
 
 /**
  * The room's stage, derived rather than broadcast: every client computes the
@@ -81,9 +133,31 @@ export function stageOf(session: SessionDoc | null, nowMs: number): Stage {
   if (!session) return 'lobby';
   if (session.status === 'ended') return 'ended';
   if (session.status === 'lobby') return 'lobby';
+
+  // Newest timestamp first, so a later stage always wins. Everything below is
+  // arithmetic on server-stamped instants: no client has to be awake at a
+  // transition, and a refresher or late joiner lands on the same answer.
+  const twoRun = isTwoRun(session);
+
+  if (twoRun) {
+    const r2 = session.run2StartsAt?.toMillis();
+    if (r2 != null) {
+      if (nowMs >= r2) return 'running2';
+      return nowMs >= r2 - COUNTDOWN_MS ? 'countdown2' : 'plan2';
+    }
+    const planAt = session.planOpensAt?.toMillis();
+    if (planAt != null && nowMs >= planAt) return 'plan2';
+  }
+
   const startsAt = session.runStartsAt?.toMillis();
   if (startsAt == null) return 'planning';
-  if (nowMs >= startsAt) return 'running';
+  if (nowMs >= startsAt) {
+    // In a two-run session, run 1 ending is a stage of its own: the room sits on
+    // its results until the instructor opens planning. Derived from the run's
+    // known length rather than a written flag, so it needs no actor either.
+    if (twoRun && nowMs >= startsAt + runWindowMs(session)) return 'review1';
+    return 'running';
+  }
   return nowMs >= startsAt - COUNTDOWN_MS ? 'countdown' : 'planning';
 }
 
@@ -123,6 +197,12 @@ export function subscribePlayers(
 
 export interface ProgressUpdate {
   phase: PlayerDoc['phase'];
+  /**
+   * Which run this progress belongs to. Load-bearing, not decorative: the
+   * security rules only allow simMinute to go backwards when the round goes up,
+   * so omitting this would deny every round-2 write.
+   */
+  round: 1 | 2;
   simMinute: number;
   pctComplete: number;
   utilizationAvg: number;
@@ -142,25 +222,43 @@ export async function writeProgress(
   });
 }
 
+/**
+ * Per-round document names. Round 1 keeps the original names so existing
+ * sessions and the single-run format are untouched; round 2 gets its own, which
+ * is what stops the replay overwriting run 1 and destroying the very comparison
+ * the two-run format exists to show.
+ *
+ * The rules match `private/{doc}` generically, so no rules change is needed.
+ */
+const privateDoc = (base: 'checkpoint' | 'result', round: 1 | 2 = 1) =>
+  round === 1 ? base : `${base}-2`;
+
 export async function saveCheckpoint(
   sessionId: string,
   playerId: string,
   uid: string,
   cp: Checkpoint,
+  round: 1 | 2 = 1,
 ): Promise<void> {
-  await setDoc(doc(db(), 'sessions', sessionId, 'players', playerId, 'private', 'checkpoint'), {
-    ...cp,
-    uid,
-    savedAt: serverTimestamp(),
-  });
+  await setDoc(
+    doc(
+      db(), 'sessions', sessionId, 'players', playerId,
+      'private', privateDoc('checkpoint', round),
+    ),
+    { ...cp, uid, savedAt: serverTimestamp() },
+  );
 }
 
 export async function loadCheckpoint(
   sessionId: string,
   playerId: string,
+  round: 1 | 2 = 1,
 ): Promise<Checkpoint | null> {
   const snap = await getDoc(
-    doc(db(), 'sessions', sessionId, 'players', playerId, 'private', 'checkpoint'),
+    doc(
+      db(), 'sessions', sessionId, 'players', playerId,
+      'private', privateDoc('checkpoint', round),
+    ),
   );
   return snap.exists() ? (snap.data() as Checkpoint) : null;
 }
@@ -170,12 +268,29 @@ export async function saveResult(
   playerId: string,
   uid: string,
   result: ResultSummary,
+  round: 1 | 2 = 1,
 ): Promise<void> {
-  await setDoc(doc(db(), 'sessions', sessionId, 'players', playerId, 'private', 'result'), {
-    ...result,
-    uid,
-    savedAt: serverTimestamp(),
-  });
+  await setDoc(
+    doc(
+      db(), 'sessions', sessionId, 'players', playerId,
+      'private', privateDoc('result', round),
+    ),
+    { ...result, uid, savedAt: serverTimestamp() },
+  );
+}
+
+export async function loadResult(
+  sessionId: string,
+  playerId: string,
+  round: 1 | 2 = 1,
+): Promise<ResultSummary | null> {
+  const snap = await getDoc(
+    doc(
+      db(), 'sessions', sessionId, 'players', playerId,
+      'private', privateDoc('result', round),
+    ),
+  );
+  return snap.exists() ? (snap.data() as ResultSummary) : null;
 }
 
 // --- instructor -----------------------------------------------------------
@@ -214,13 +329,44 @@ export interface InstructorDoc {
   uid: string;
   email: string;
   displayName: string;
+  /**
+   * University / institution, collected at registration. Optional because
+   * accounts created before the field existed do not carry it — the admin
+   * screen shows those as "not given" rather than hiding them.
+   */
+  affiliation?: string;
   status: 'pending' | 'approved' | 'rejected';
+}
+
+/**
+ * Admin-only: fill in or correct an instructor's university affiliation.
+ *
+ * Needed because affiliation was added after the first accounts existed, and
+ * because the missing-profile repair path in authStore has no affiliation to
+ * write. `allow update: if isAdmin()` already covers this — no rules change.
+ */
+export async function setInstructorAffiliation(
+  uid: string,
+  affiliation: string,
+): Promise<void> {
+  await updateDoc(doc(db(), 'users', uid), { affiliation: affiliation.trim() });
 }
 
 export function subscribeInstructors(
   cb: (users: InstructorDoc[]) => void,
+  onError?: (e: Error) => void,
 ): Unsubscribe {
-  return onSnapshot(collection(db(), 'users'), (snap) => {
-    cb(snap.docs.map((d) => ({ uid: d.id, ...d.data() }) as InstructorDoc));
-  });
+  // The error callback is load-bearing. This listener is attached the moment
+  // `isAdmin` flips true, which can be before Firestore has picked up the
+  // refreshed ID token carrying the admin claim — the read is then denied, and
+  // a denied listener never retries. Without this the screen sat on "Nothing
+  // pending — you're all caught up", which reads as success rather than a
+  // permission failure that a reload would clear.
+  return onSnapshot(
+    collection(db(), 'users'),
+    (snap) => {
+      cb(snap.docs.map((d) => ({ uid: d.id, ...d.data() }) as InstructorDoc));
+    },
+    (e) => onError?.(e),
+  );
 }

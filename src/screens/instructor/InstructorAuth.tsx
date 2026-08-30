@@ -10,6 +10,7 @@ export function InstructorAuth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [affiliation, setAffiliation] = useState('');
   const [registered, setRegistered] = useState(false);
   const [resent, setResent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -135,7 +136,8 @@ export function InstructorAuth() {
         onSubmit={async (e) => {
           e.preventDefault();
           if (mode === 'register') {
-            if (await register(email, password, displayName)) setRegistered(true);
+            if (await register(email, password, displayName, affiliation))
+              setRegistered(true);
           } else {
             await login(email, password);
           }
@@ -148,22 +150,34 @@ export function InstructorAuth() {
         <p style={{ color: 'var(--ink-soft)', marginTop: 0, fontSize: '0.9rem' }}>
           {mode === 'login'
             ? 'Run sessions and watch the class leaderboard live.'
-            : 'You’ll verify your email, then the site admin approves your account.'}
+            : 'Tell us where you teach, verify your email, then the site admin approves your account.'}
         </p>
         {registered ? (
           <p>Check your inbox for the verification link, then sign in.</p>
         ) : (
           <div style={{ margin: '18px 0' }}>
             {mode === 'register' && (
-              <label className="field">
-                <span>Your name</span>
-                <input
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  autoComplete="name"
-                  required
-                />
-              </label>
+              <>
+                <label className="field">
+                  <span>Your name</span>
+                  <input
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    autoComplete="name"
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span>University affiliation</span>
+                  <input
+                    value={affiliation}
+                    onChange={(e) => setAffiliation(e.target.value)}
+                    placeholder="e.g. UW–Madison"
+                    autoComplete="organization"
+                    required
+                  />
+                </label>
+              </>
             )}
             <label className="field">
               <span>Email</span>
@@ -202,14 +216,27 @@ export function InstructorAuth() {
           {mode === 'login' ? (
             <>
               New here?{' '}
-              <a href="#" onClick={(e) => (e.preventDefault(), setMode('register'))}>
+              <a
+                href="#"
+                onClick={(e) => (
+                  e.preventDefault(), setRegistered(false), setMode('register')
+                )}
+              >
                 Register as an instructor
               </a>
             </>
           ) : (
             <>
               Already registered?{' '}
-              <a href="#" onClick={(e) => (e.preventDefault(), setMode('login'))}>
+              {/* Reset `registered` too: it hides the form fields, so without
+                  this, switching back to Sign in after registering renders a
+                  card with no inputs at all. */}
+              <a
+                href="#"
+                onClick={(e) => (
+                  e.preventDefault(), setRegistered(false), setMode('login')
+                )}
+              >
                 Sign in
               </a>
             </>

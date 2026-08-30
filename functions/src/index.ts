@@ -105,6 +105,29 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
 
 /** Default planning-stage cap, in minutes. Mirrors the client constant. */
 const DEFAULT_PLANNING_MINUTES = 5;
+/** Minutes the between-runs plan board stays open in a two-run session. */
+const DEFAULT_PLAN_MINUTES = 8;
+
+/** Wall-clock ms one run lasts, mirroring runWindowMs on the client. */
+function runWindowMs(session: FirebaseFirestore.DocumentData): number {
+  const deadlineMin = session.settings?.simDeadlineMin ?? 120;
+  const compression = session.settings?.compression ?? 8;
+  return ((deadlineMin * 60) / compression) * 1000;
+}
+
+function planMinutes(session: FirebaseFirestore.DocumentData): number {
+  const m = session.settings?.planMinutes;
+  return typeof m === "number" && Number.isFinite(m) ? m : DEFAULT_PLAN_MINUTES;
+}
+
+function requireTwoRun(session: FirebaseFirestore.DocumentData): void {
+  if (session.settings?.format !== "two-run") {
+    throw new HttpsError(
+      "failed-precondition",
+      "This session is a single run."
+    );
+  }
+}
 /**
  * Milliseconds of "starting in 5… 4… 3…" between a start trigger and the run.
  * Generous enough to cover a cold callable round-trip, so the student who
@@ -118,11 +141,32 @@ const COUNTDOWN_MS = 5_000;
  */
 function hasRunStarted(session: DocumentData): boolean {
   if (session.status === "lobby") return false;
+  const now = Date.now();
+
+  if (session.settings?.format === "two-run") {
+    const r2 =
+      session.run2StartsAt instanceof Timestamp
+        ? session.run2StartsAt.toMillis()
+        : null;
+    // Run 2 under way: closed again, same reasoning as run 1.
+    if (r2 != null && now >= r2) return true;
+    // Between the runs — results are up, or the plan board is open — the room
+    // is deliberately open. This is the student whose laptop died during run 1:
+    // they can rejoin, plan, and take part in the replay. There is nothing
+    // half-finished to drop them into.
+    if (session.planOpensAt) return false;
+    const startsAt1 =
+      session.runStartsAt instanceof Timestamp
+        ? session.runStartsAt.toMillis()
+        : null;
+    if (startsAt1 != null && now >= startsAt1 + runWindowMs(session)) return false;
+  }
+
   const startsAt =
     session.runStartsAt instanceof Timestamp
       ? session.runStartsAt.toMillis()
       : null;
-  return startsAt != null && Date.now() >= startsAt;
+  return startsAt != null && now >= startsAt;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +180,9 @@ export const onInstructorRegistered = onDocumentCreated(
     const data = snap.data();
     const displayName = (data.displayName as string) ?? "(no name)";
     const email = (data.email as string) ?? "(no email)";
+    // Absent on accounts recovered by the client's missing-profile repair
+    // path, which has no affiliation to offer — say so rather than omit it.
+    const affiliation = (data.affiliation as string) || "(not given)";
 
     await sendEmail(
       ADMIN_EMAIL,
@@ -143,6 +190,7 @@ export const onInstructorRegistered = onDocumentCreated(
       `<p>A new instructor has registered and is awaiting approval.</p>` +
         `<p><strong>Name:</strong> ${escapeHtml(displayName)}<br/>` +
         `<strong>Email:</strong> ${escapeHtml(email)}<br/>` +
+        `<strong>Affiliation:</strong> ${escapeHtml(affiliation)}<br/>` +
         `<strong>UID:</strong> ${escapeHtml(event.params.uid)}</p>` +
         `<p>Open the admin page to approve.</p>`
     );
@@ -259,6 +307,17 @@ export const createSession = onCall(async (request) => {
       ? Math.min(30, Math.max(1, Math.round(rawPlanning)))
       : DEFAULT_PLANNING_MINUTES;
 
+  // Two-run is opt-in per session. Anything unrecognised (including nothing at
+  // all, from an older client) is a plain single run — the original format.
+  const format = request.data?.format === "two-run" ? "two-run" : "single";
+  const replayScenario =
+    request.data?.replayScenario === "newChaos" ? "newChaos" : "sameSeed";
+  const rawPlan = request.data?.planMinutes;
+  const planMinutes =
+    typeof rawPlan === "number" && Number.isFinite(rawPlan)
+      ? Math.min(30, Math.max(1, Math.round(rawPlan)))
+      : DEFAULT_PLAN_MINUTES;
+
   const instructorUid = request.auth.uid;
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -284,8 +343,16 @@ export const createSession = onCall(async (request) => {
           createdAt: FieldValue.serverTimestamp(),
           playerCount: 0,
           runStartsAt: null,
+          planOpensAt: null,
+          run2StartsAt: null,
           readyCount: 0,
-          settings: { simDeadlineMin: 120, compression: 8, planningMinutes },
+          settings: {
+            simDeadlineMin: 120,
+            compression: 8,
+            planningMinutes,
+            format,
+            ...(format === "two-run" ? { replayScenario, planMinutes } : {}),
+          },
         });
       });
       return { sessionId: sessionRef.id, code };
@@ -495,9 +562,16 @@ export const markReady = onCall(async (request) => {
       );
     }
 
+    // Which run is this readiness for? Once the plan board has opened, "ready"
+    // means ready for run 2, and it must pull run 2's timestamp forward rather
+    // than run 1's — which is long past and would start nothing.
+    const planOpen =
+      session.settings?.format === "two-run" && !!session.planOpensAt;
+    const startField = planOpen ? "run2StartsAt" : "runStartsAt";
+    const round = planOpen ? 2 : 1;
     const existingMs =
-      session.runStartsAt instanceof Timestamp
-        ? session.runStartsAt.toMillis()
+      session[startField] instanceof Timestamp
+        ? session[startField].toMillis()
         : null;
     const now = Date.now();
 
@@ -516,6 +590,7 @@ export const markReady = onCall(async (request) => {
         readyCount,
         playerCount,
         allReady,
+        round,
         runStartsAtMs: existingMs,
         serverNowMs: now,
       };
@@ -534,7 +609,7 @@ export const markReady = onCall(async (request) => {
       // This invariant is what keeps concurrent callers safe.
       if (existingMs == null || soon < existingMs) {
         runStartsAtMs = soon;
-        tx.update(sessionRef, { runStartsAt: Timestamp.fromMillis(soon) });
+        tx.update(sessionRef, { [startField]: Timestamp.fromMillis(soon) });
       }
     }
 
@@ -542,6 +617,7 @@ export const markReady = onCall(async (request) => {
       readyCount,
       playerCount,
       allReady,
+      round,
       runStartsAtMs,
       serverNowMs: now,
     };
@@ -563,13 +639,18 @@ export const sessionControl = onCall(async (request) => {
   }
   const sessionId = request.data?.sessionId;
   const action = request.data?.action;
-  if (
-    typeof sessionId !== "string" ||
-    (action !== "openPlanning" && action !== "startNow" && action !== "end")
-  ) {
+  const ACTIONS = [
+    "openPlanning",
+    "startNow",
+    "end",
+    // Two-run only.
+    "openPlan2",
+    "startNow2",
+  ] as const;
+  if (typeof sessionId !== "string" || !ACTIONS.includes(action)) {
     throw new HttpsError(
       "invalid-argument",
-      "Expected { sessionId: string, action: 'openPlanning'|'startNow'|'end' }."
+      `Expected { sessionId: string, action: ${ACTIONS.join("|")} }.`
     );
   }
 
@@ -582,6 +663,12 @@ export const sessionControl = onCall(async (request) => {
     if (session.instructorUid !== request.auth!.uid) {
       throw new HttpsError("permission-denied", "Not your session.");
     }
+    // Firestore transactions require every read before the first write, so the
+    // roster is fetched up front even though only openPlan2 uses it.
+    const playerDocs =
+      action === "openPlan2"
+        ? (await tx.get(sessionRef.collection("players"))).docs
+        : [];
 
     const now = Date.now();
     const existingMs =
@@ -617,8 +704,7 @@ export const sessionControl = onCall(async (request) => {
         planningOpenedAt: FieldValue.serverTimestamp(),
         runStartsAt: Timestamp.fromMillis(runStartsAtMs),
       });
-    } else {
-      // startNow
+    } else if (action === "startNow") {
       if (session.status !== "planning") {
         throw new HttpsError("failed-precondition", "Planning is not open.");
       }
@@ -626,6 +712,43 @@ export const sessionControl = onCall(async (request) => {
       if (existingMs == null || soon < existingMs) {
         runStartsAtMs = soon;
         tx.update(sessionRef, { runStartsAt: Timestamp.fromMillis(soon) });
+      }
+    } else if (action === "openPlan2") {
+      requireTwoRun(session);
+      if (session.planOpensAt) {
+        throw new HttpsError("failed-precondition", "Planning is already open.");
+      }
+      if (existingMs == null || now < existingMs + runWindowMs(session)) {
+        // Not simply pedantry: opening early would drag students out of a run
+        // that, as far as their own clock is concerned, is still going.
+        throw new HttpsError(
+          "failed-precondition",
+          "Run 1 is still going. Wait for it to finish, or end the session."
+        );
+      }
+      // Clearing `ready` is load-bearing. Rules make it function-only, so if it
+      // is not reset here every student is still flagged ready from run 1 and
+      // markReady starts run 2 the instant the board opens.
+      for (const p of playerDocs) tx.update(p.ref, { ready: false });
+      tx.update(sessionRef, {
+        planOpensAt: Timestamp.fromMillis(now),
+        run2StartsAt: Timestamp.fromMillis(now + planMinutes(session) * 60_000),
+        readyCount: 0,
+      });
+    } else if (action === "startNow2") {
+      requireTwoRun(session);
+      if (!session.planOpensAt) {
+        throw new HttpsError("failed-precondition", "The plan board is not open.");
+      }
+      const existing2 =
+        session.run2StartsAt instanceof Timestamp
+          ? session.run2StartsAt.toMillis()
+          : null;
+      const soon = now + COUNTDOWN_MS;
+      // Never push the start back, for the same reason startNow doesn't: a
+      // second press must not rewind a countdown other clients are already on.
+      if (existing2 == null || soon < existing2) {
+        tx.update(sessionRef, { run2StartsAt: Timestamp.fromMillis(soon) });
       }
     }
 
