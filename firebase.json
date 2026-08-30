@@ -23,7 +23,7 @@
         ]
       },
       {
-        "source": "/assets/**",
+        "source": "/assets/*.@(js|css)",
         "headers": [
           {
             "key": "Cache-Control",
