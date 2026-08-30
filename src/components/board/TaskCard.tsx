@@ -3,7 +3,12 @@
 
 import { useDroppable } from '@dnd-kit/core';
 import { CHARACTERS, TASK_BY_ID } from '../../engine/content';
-import { personalMult } from '../../engine/step';
+import {
+  contributorCount,
+  crewFactor,
+  explainMult,
+  taskRate,
+} from '../../engine/step';
 import type { CharId } from '../../engine/types';
 import { useSimStore } from '../../state/simStore';
 import { CharacterChip } from './CharacterChip';
@@ -33,6 +38,12 @@ export function TaskCard({ taskId }: { taskId: string }) {
     selected !== null && task.status === 'open' && !full && eligible(selected);
   const ownerNames = def.onlyChars?.map((c) => CHARACTERS[c].name).join(' or ');
   const pct = Math.min(100, (task.workDone / task.workRequired) * 100);
+  // The crew factor shown must be the one the engine applies, which counts
+  // CONTRIBUTORS, not assignees — a crew with someone on the phone was
+  // advertising an output it wasn't getting.
+  const contributors = contributorCount(sim, taskId);
+  const rate = taskRate(sim, taskId);
+  const etaMin = rate > 0 ? (task.workRequired - task.workDone) / rate / 60 : null;
   const unmet = (def.preds ?? [])
     .filter((p) => sim.tasks[p].status !== 'done')
     .map((p) => TASK_BY_ID[p].name);
@@ -58,8 +69,8 @@ export function TaskCard({ taskId }: { taskId: string }) {
       ref={setNodeRef}
       className={`task-card ${task.status} ${dropClass} ${canReceive ? 'assignable' : ''}`}
       aria-label={`${def.name}, ${task.status === 'done' ? 'done' : `${Math.round(pct)}% complete`}${
-        canReceive ? '. Press Enter to assign the selected friend.' : ''
-      }`}
+        task.reworkCount > 0 ? `, redone ${task.reworkCount} time(s)` : ''
+      }${canReceive ? '. Press Enter to assign the selected friend.' : ''}`}
       role={canReceive ? 'button' : undefined}
       tabIndex={canReceive ? 0 : undefined}
       onClick={assignSelected}
@@ -76,7 +87,9 @@ export function TaskCard({ taskId }: { taskId: string }) {
           {task.status === 'locked' && <span aria-hidden>🔒 </span>}
           {def.name}
           {task.reworkCount > 0 && task.status !== 'done' && (
-            <span title="rework!" aria-label="needs rework"> ↩</span>
+            <span className="task-redone" title="Work that was finished and had to be done again">
+              {' '}↩ redone
+            </span>
           )}
         </div>
         <div className="task-est" aria-label={`Estimated about ${def.baseMinutes} minutes; ${
@@ -93,19 +106,24 @@ export function TaskCard({ taskId }: { taskId: string }) {
             `${'👤'.repeat(def.maxWorkers)} up to ${def.maxWorkers}`
           )}
           {def.travel && ' · 🚶 away from the house'}
-          {task.assignees.length > 1 && def.minWorkers !== 5 && (
+          {contributors > 1 && def.minWorkers !== 5 && (
             <span title="Combined output of the crew vs one person — more hands help, but not linearly">
-              {' '}· crew output ×
-              {(def.multiWorkerFactors ?? [0, 1, 1.7, 2.1])[
-                Math.min(task.assignees.length, (def.multiWorkerFactors ?? [0, 1, 1.7, 2.1]).length - 1)
-              ].toFixed(1)}
+              {' '}· crew output ×{crewFactor(def, contributors).toFixed(1)}
+            </span>
+          )}
+          {etaMin != null && (
+            <span
+              className="task-eta"
+              title="At the current combined rate. It moves as people warm up, finish, or get pulled away."
+            >
+              {' '}· ~{Math.max(1, Math.ceil(etaMin))}′ left
             </span>
           )}
         </div>
       </div>
       <div className="task-assignees">
         {task.assignees.map((c) => (
-          <CharacterChip key={c} charId={c} mult={personalMult(sim, c)} />
+          <CharacterChip key={c} charId={c} explain={explainMult(sim, c)} />
         ))}
         {task.status === 'open' && task.assignees.length === 0 && (
           <span style={{ fontSize: '0.75rem', color: 'var(--ink-soft)' }}>

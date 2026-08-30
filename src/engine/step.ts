@@ -31,13 +31,18 @@ import {
   WALKTHROUGH_SURPRISE_THRESHOLD,
   TICKS_PER_MINUTE,
 } from './content';
+import { planActions } from './dispatch';
 import { pctComplete } from './scoring';
 import type {
   Action,
   CharId,
+  MultExplain,
+  MultTerm,
   SimEvent,
   SimState,
+  Skill,
   StepResult,
+  TaskDef,
   TaskState,
   TimelineKind,
 } from './types';
@@ -49,6 +54,13 @@ export function step(state: SimState, actions: Action[] = []): StepResult {
   state.tick++;
 
   for (const action of actions) applyAction(state, action, events);
+  // The plan fills whatever hands the player left empty. Player actions run
+  // first so an override always wins: once they have assigned someone, that
+  // character has a task and the dispatcher passes over them this tick.
+  // No plan (a single run, or practice) means this is never reached.
+  if (state.plan) {
+    for (const a of planActions(state)) applyAction(state, a, events, 'plan');
+  }
   fireScheduledEvents(state, events);
   resolveNudge(state, events);
   endExpiredInterruptions(state);
@@ -78,7 +90,13 @@ export function applyOnly(state: SimState, actions: Action[]): StepResult {
 // ---------------------------------------------------------------------------
 // Actions
 
-function applyAction(state: SimState, action: Action, events: SimEvent[]) {
+function applyAction(
+  state: SimState,
+  action: Action,
+  events: SimEvent[],
+  /** Provenance: 'plan' when the dispatcher did it, absent when the player did. */
+  src?: 'plan',
+) {
   const tick = state.tick;
 
   if (action.type === 'nudge') {
@@ -86,7 +104,7 @@ function applyAction(state: SimState, action: Action, events: SimEvent[]) {
     if (action.charId === PLAYER_CHAR) return;
     if (target.activity === 'toilet') {
       bubble(state, events, action.charId, 'nudge-toilet-futile');
-      state.actionLog.push({ tick, action });
+      state.actionLog.push(src ? { tick, action, src } : { tick, action });
       return;
     }
     if (state.nudge) return; // Sora is already on her way to someone
@@ -101,13 +119,13 @@ function applyAction(state: SimState, action: Action, events: SimEvent[]) {
       tick + NUDGE_WALK_TICKS + NUDGE_CHAT_TICKS,
     );
     bubble(state, events, PLAYER_CHAR, 'nudge-onmyway', true);
-    state.actionLog.push({ tick, action });
+    state.actionLog.push(src ? { tick, action, src } : { tick, action });
     return;
   }
 
   if (action.type === 'unassign') {
     removeFromTask(state, action.charId, events);
-    state.actionLog.push({ tick, action });
+    state.actionLog.push(src ? { tick, action, src } : { tick, action });
     return;
   }
 
@@ -143,7 +161,7 @@ function applyAction(state: SimState, action: Action, events: SimEvent[]) {
     char.activity = 'walking';
   }
   task.arriveAt[action.charId] = Math.max(tick, char.unavailableUntil) + TRANSIT_TICKS;
-  state.actionLog.push({ tick, action });
+  state.actionLog.push(src ? { tick, action, src } : { tick, action });
 
   // Discovery bubbles for hidden constraints.
   if (def.requiresLicense && !CHARACTERS[action.charId].license) {
@@ -246,9 +264,11 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
         // The bathroom suffers, whether cleaned already or mid-clean.
         const bath = state.tasks['clean-bathroom'];
         if (bath.workDone > 0) {
+          const wasDone = bath.workDone;
           bath.workDone = Math.max(0, bath.workDone * (1 - BATHROOM_REWORK_FRACTION));
           if (bath.status === 'done') bath.status = 'open';
           bath.reworkCount++;
+          bath.reworkLost += wasDone - bath.workDone;
           events.push({
             type: 'rework',
             tick,
@@ -271,8 +291,10 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
         const living = state.tasks['clean-living-room'];
         if (living.status === 'done') {
           living.status = 'open';
+          const wasDone = living.workDone;
           living.workDone = living.workRequired * 0.85;
           living.reworkCount++;
+          living.reworkLost += wasDone - living.workDone;
           events.push({
             type: 'rework',
             tick,
@@ -419,7 +441,7 @@ function recordTimeline(state: SimState) {
 // Work accrual
 
 /** True when this character adds effective work to their task this tick. */
-function contributes(state: SimState, charId: CharId): boolean {
+export function contributes(state: SimState, charId: CharId): boolean {
   const c = state.chars[charId];
   if (!c.taskId) return false;
   if (c.activity !== 'working') return false;
@@ -442,47 +464,111 @@ function vacuumHolder(state: SimState): string | null {
   return null;
 }
 
+const SKILL_NOUN: Record<Skill, string> = {
+  cooking: 'Cooking',
+  cleaning: 'Cleaning',
+  driving: 'Driving',
+  heavy: 'Heavy lifting',
+  shopping: 'Shopping',
+  general: 'General know-how',
+};
+
 /**
- * Personal effectiveness multiplier for a character on their current task —
+ * The personal effectiveness multiplier, decomposed into named factors —
  * skill × ownership × learning ramp × social × hangry × music × equipment/list
- * penalties. Excludes the team-size factor (that's team-level). Also used by
- * the UI to show live productivity. Returns null when unassigned.
+ * penalties. Excludes the team-size factor (that's team-level).
+ *
+ * `personalMult` is defined as the product of these terms, so the breakdown the
+ * player reads is the calculation the engine performs — the two cannot drift.
+ * Factors of exactly 1 are omitted (multiplying by 1.0 is exact in IEEE-754, so
+ * dropping them cannot move the product).
+ *
+ * Returns null when unassigned, or a `blocked` reason when the character is
+ * producing nothing — which is different information from "×0" and is what the
+ * player actually needs in order to act.
  */
-export function personalMult(state: SimState, charId: CharId): number | null {
+export function explainMult(state: SimState, charId: CharId): MultExplain | null {
   const c = state.chars[charId];
   if (!c.taskId) return null;
   const def = TASK_BY_ID[c.taskId];
   const task = state.tasks[c.taskId];
-  if (def.requiresLicense && !CHARACTERS[charId].license) return 0;
-  if (def.onlyChars && !def.onlyChars.includes(charId)) return 0;
-  if (!contributes(state, charId)) return 0;
-
   const charDef = CHARACTERS[charId];
-  let m = charDef.skillMult[def.skill] ?? 1.0;
-  if (def.owners) {
-    if (def.owners.includes(charId)) m *= def.ownerMult ?? 1;
-    else m *= def.nonOwnerMult ?? 1;
+
+  if (def.requiresLicense && !charDef.license) return { blocked: 'no-licence' };
+  if (def.onlyChars && !def.onlyChars.includes(charId)) return { blocked: 'not-theirs' };
+  if (!contributes(state, charId)) {
+    // `working` here means the activity is right but an interruption tail (a
+    // nudge cost, say) is still running down.
+    return { blocked: c.activity === 'working' ? 'interrupted' : c.activity };
   }
+
+  const terms: MultTerm[] = [];
+  const add = (key: string, label: string, factor: number, hint?: string) => {
+    if (factor !== 1) terms.push(hint ? { key, label, factor, hint } : { key, label, factor });
+  };
+
+  // Order matters: it is the order the multiplication used to happen in, and
+  // keeping it makes the product bit-identical to the previous implementation.
+  add('skill', `${SKILL_NOUN[def.skill]} skill`, charDef.skillMult[def.skill] ?? 1.0);
+
+  if (def.owners) {
+    if (def.owners.includes(charId)) add('owner', 'Their own', def.ownerMult ?? 1);
+    else add('owner', "Someone else's", def.nonOwnerMult ?? 1);
+  }
+
   if (!def.travel && !def.noRamp) {
     const arrived = task.arriveAt[charId] ?? state.tick;
     const onTask = Math.max(0, state.tick - arrived);
-    m *=
+    const ramp =
       LEARNING_START_FRACTION +
       (1 - LEARNING_START_FRACTION) * Math.min(1, onTask / LEARNING_RAMP_TICKS);
+    const left = Math.ceil((LEARNING_RAMP_TICKS - onTask) / TICKS_PER_MINUTE);
+    add('learning', 'Still learning the job', ramp, `full speed in ${left} min`);
   }
+
   const n = task.assignees.filter((x) => contributes(state, x)).length;
-  if (n > 1 && charDef.pairedMult) m *= charDef.pairedMult;
-  if (n === 1 && charDef.aloneMult) m *= charDef.aloneMult;
+  if (n > 1 && charDef.pairedMult) {
+    add(
+      'company',
+      charDef.pairedMult > 1 ? 'Works better with company' : 'Needs elbow room',
+      charDef.pairedMult,
+    );
+  }
+  if (n === 1 && charDef.aloneMult) {
+    add(
+      'company',
+      charDef.aloneMult > 1 ? 'Happy on their own' : 'Misses the company',
+      charDef.aloneMult,
+    );
+  }
 
   const eatDone = state.tasks['eat-breakfast'].status === 'done';
-  if (state.tick >= HANGRY_TICK && !eatDone && !c.fed) m *= HANGRY_MULT;
-  if (state.tick < state.boostUntil) m *= MUSIC_BOOST;
-
-  if (def.equipment === 'vacuum' && vacuumHolder(state) !== c.taskId) m *= VACUUM_PENALTY;
-  if (c.taskId === 'buy-snacks' && state.tasks['clean-living-room'].status !== 'done') {
-    m *= NO_LIST_MULT;
+  if (state.tick >= HANGRY_TICK && !eatDone && !c.fed) {
+    add('hangry', 'Nobody has eaten yet', HANGRY_MULT);
   }
-  return m;
+  if (state.tick < state.boostUntil) add('music', 'Music is on', MUSIC_BOOST);
+
+  if (def.equipment === 'vacuum' && vacuumHolder(state) !== c.taskId) {
+    add('vacuum', 'Someone else has the vacuum', VACUUM_PENALTY);
+  }
+  if (c.taskId === 'buy-snacks' && state.tasks['clean-living-room'].status !== 'done') {
+    add('list', 'Shopping without the list', NO_LIST_MULT);
+  }
+
+  let value = 1;
+  for (const t of terms) value *= t.factor;
+  return { terms, value };
+}
+
+/**
+ * Personal effectiveness multiplier — the product of `explainMult`'s terms.
+ * Returns null when unassigned, 0 when blocked. Used by the engine's work
+ * accrual and by the UI's productivity badge.
+ */
+export function personalMult(state: SimState, charId: CharId): number | null {
+  const e = explainMult(state, charId);
+  if (e === null) return null;
+  return 'blocked' in e ? 0 : e.value;
 }
 
 function accrueWork(state: SimState, events: SimEvent[]) {
@@ -494,27 +580,53 @@ function accrueWork(state: SimState, events: SimEvent[]) {
 
   for (const [taskId, task] of Object.entries(state.tasks)) {
     if (task.status !== 'open' || task.assignees.length === 0) continue;
-    const def = TASK_BY_ID[taskId];
 
-    const workers = task.assignees.filter((c) => contributes(state, c));
-    const n = workers.length;
-    if (n === 0) continue;
-    if (def.minWorkers && n < def.minWorkers) continue;
-
-    const factors = def.multiWorkerFactors ?? DEFAULT_MULTIWORKER;
-    const factor = factors[Math.min(n, factors.length - 1)];
-    const share = factor / n;
-
-    let rate = 0;
-    for (const charId of workers) {
-      rate += (personalMult(state, charId) ?? 0) * share;
-    }
+    const rate = taskRate(state, taskId);
+    if (rate === 0) continue;
 
     task.workDone += rate;
     if (task.workDone >= task.workRequired) {
       completeTask(state, taskId, task, events);
     }
   }
+}
+
+/**
+ * Effective work this task accrues per tick right now: its contributors' personal
+ * multipliers, each scaled by the crew-size share. Zero when nobody is
+ * contributing or a `minWorkers` barrier is unmet.
+ *
+ * Shared with the UI so a displayed ETA is the engine's own arithmetic rather
+ * than a second implementation of it — and so the crew factor shown on a task is
+ * the one actually applied, which counts *contributors*, not assignees.
+ */
+export function taskRate(state: SimState, taskId: string): number {
+  const task = state.tasks[taskId];
+  const def = TASK_BY_ID[taskId];
+  if (!task || !def || task.status !== 'open') return 0;
+
+  const workers = task.assignees.filter((c) => contributes(state, c));
+  const n = workers.length;
+  if (n === 0) return 0;
+  if (def.minWorkers && n < def.minWorkers) return 0;
+
+  const share = crewFactor(def, n) / n;
+  let rate = 0;
+  for (const charId of workers) rate += (personalMult(state, charId) ?? 0) * share;
+  return rate;
+}
+
+/** Combined crew output for `n` contributors — more hands help, but not linearly. */
+export function crewFactor(def: TaskDef, n: number): number {
+  const factors = def.multiWorkerFactors ?? DEFAULT_MULTIWORKER;
+  return factors[Math.min(n, factors.length - 1)];
+}
+
+/** How many of a task's assignees are actually producing work right now. */
+export function contributorCount(state: SimState, taskId: string): number {
+  const task = state.tasks[taskId];
+  if (!task) return 0;
+  return task.assignees.filter((c) => contributes(state, c)).length;
 }
 
 function completeTask(
@@ -534,6 +646,9 @@ function completeTask(
     state.walkthroughSurpriseDone = true;
     task.workRequired += WALKTHROUGH_SURPRISE_EXTRA_SECONDS;
     task.reworkCount++;
+    // Ground lost the other way round: the work done still counts, but the
+    // finish line moved. Same thing to the player, so it lands in the same bar.
+    task.reworkLost += WALKTHROUGH_SURPRISE_EXTRA_SECONDS;
     events.push({ type: 'rework', tick, taskId, textKey: 'rework-walkthrough' });
     return; // not done after all
   }
@@ -565,6 +680,7 @@ function completeTask(
         refreshLocksAfterRework(state, bagId);
       }
       bag.reworkCount++;
+      bag.reworkLost += REPACK_EXTRA_SECONDS;
       events.push({ type: 'rework', tick, taskId: bagId, textKey: `found-item-${taskId}` });
     }
   }

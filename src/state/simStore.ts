@@ -77,7 +77,11 @@ interface SimStore {
   /** Called after each real-second batch of ticks; Firebase layer hooks in here. */
   onTicked?: (sim: SimState) => void;
 
-  newGame(seed: number): void;
+  /**
+   * Start a fresh run. `opts` is only used by two-run sessions: round 2 keeps
+   * the same task durations and may re-roll the disruptions.
+   */
+  newGame(seed: number, opts?: { round?: 1 | 2; chaosSeed?: number }): void;
   beginPlanning(): void;
   startClock(): void;
   setPaused(p: boolean): void;
@@ -117,10 +121,11 @@ export const useSimStore = create<SimStore>((set, get) => ({
     set({ phase: 'done', paused: false, clockAnchorMs: null });
   },
 
-  newGame(seed) {
+  newGame(seed, opts) {
     tickRemainder = 0;
+    pendingActions.length = 0;
     set({
-      sim: createRun(seed),
+      sim: createRun(seed, opts),
       version: 0,
       phase: 'lobby',
       paused: false,
@@ -146,9 +151,18 @@ export const useSimStore = create<SimStore>((set, get) => ({
   },
 
   dispatch(action) {
-    const { sim, phase } = get();
+    const { sim, phase, paused } = get();
     if (!sim) return;
-    if (phase === 'planning') {
+    // Whenever the clock is frozen — the planning freeze, or a paused practice
+    // run — apply immediately. Queuing would strand the action: `advance` bails
+    // while paused, so the queue is never drained, and since nothing calls `set`
+    // nothing re-renders either (every worker view repaints off `version`). The
+    // player drags an idle friend onto a task and sees nothing happen until they
+    // hit resume, at which point the chip snaps across.
+    //
+    // Applying early grants no head start: `arriveAt` is stamped as an ABSOLUTE
+    // tick, so a frozen clock still owes the full transit once time resumes.
+    if (phase === 'planning' || (phase === 'running' && paused)) {
       const { events } = applyOnly(sim, [action]);
       ingestEvents(sim, events, set, get);
       set((s) => ({ version: s.version + 1 }));

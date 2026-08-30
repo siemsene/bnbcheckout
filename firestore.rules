@@ -43,7 +43,8 @@ service cloud.firestore {
         && resource.data.instructorUid == request.auth.uid
         && request.resource.data.instructorUid == request.auth.uid
         && !request.resource.data.diff(resource.data).affectedKeys()
-             .hasAny(['runStartsAt', 'readyCount', 'playerCount', 'code',
+             .hasAny(['runStartsAt', 'planOpensAt', 'run2StartsAt',
+                      'readyCount', 'playerCount', 'code',
                       'settings', 'createdAt', 'planningOpenedAt'])
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
             || request.resource.data.status == 'ended');
@@ -70,7 +71,14 @@ service cloud.firestore {
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.name == resource.data.name
           && request.resource.data.seed == resource.data.seed
-          && request.resource.data.simMinute >= resource.data.simMinute
+          // Sim time only moves forward WITHIN a run. Round 2 legitimately
+          // restarts at minute 0, and an absolute check would deny every
+          // round-2 progress write — silently, because writeProgress swallows
+          // its errors, so the leaderboard would just freeze with nothing
+          // logged anywhere. The round itself may never go backwards.
+          && request.resource.data.get('round', 1) >= resource.data.get('round', 1)
+          && (request.resource.data.get('round', 1) > resource.data.get('round', 1)
+              || request.resource.data.simMinute >= resource.data.simMinute)
           && request.resource.data.get('ready', false) == resource.data.get('ready', false);
         allow delete: if false;
 

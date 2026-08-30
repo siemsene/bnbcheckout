@@ -2,24 +2,33 @@
 // (who worked when on what), and the utilization chart. Shown as a blocking
 // overlay so every round is reviewed before the next one starts.
 
-import { summarize } from '../../engine/scoring';
+import { summarize, type ResultSummary } from '../../engine/scoring';
 import { useSimStore } from '../../state/simStore';
 import { CompletionChart } from '../../components/charts/CompletionChart';
 import { GanttChart } from '../../components/charts/GanttChart';
 import { UtilizationChart } from '../../components/charts/UtilizationChart';
+import { RunCompare } from '../../components/charts/RunCompare';
+import { VarianceTable } from '../../components/plan/VarianceTable';
 import { Celebration } from './Celebration';
 
 export function Results({
   onPlayAgain,
   playAgainLabel = 'Play again',
+  previousRun,
 }: {
   onPlayAgain: () => void;
   playAgainLabel?: string;
+  /** Run 1's summary, when this is the debrief of a two-run session's replay. */
+  previousRun?: ResultSummary | null;
 }) {
   const sim = useSimStore((s) => s.sim);
   if (!sim) return null;
   const r = summarize(sim);
   const finished = r.outcome === 'finished';
+  // The plan the student committed to, and what it predicted. Frozen at commit,
+  // so this compares against what they actually signed up to.
+  const planned = sim.plannedProjection;
+  const plannedFinish = planned?.finishSimMinute ?? null;
 
   // Of all the time the team was assigned to something, how much actually
   // produced work — the gap is walking and blocked time.
@@ -86,20 +95,62 @@ export function Results({
           The whole job as one line. Dips are rework — a re-dirtied bathroom or a
           repacked bag doesn’t just stall progress, it takes some back.
         </p>
-        <CompletionChart completion={r.completion} finishSimMinute={r.finishSimMinute} />
+        <CompletionChart
+          completion={r.completion}
+          finishSimMinute={r.finishSimMinute}
+          compare={
+            planned
+              ? { label: 'your plan', values: planned.completion }
+              : previousRun
+                ? { label: 'first run', values: previousRun.completion }
+                : null
+          }
+        />
 
         <h3 style={sectionH}>Where the two hours went</h3>
         <p style={sectionP}>
           Every stretch of every friend’s morning. Gaps are idle time — nobody was
           assigned anything.
         </p>
-        <GanttChart timeline={r.timeline} finishSimMinute={r.finishSimMinute} />
+        <GanttChart
+          timeline={r.timeline}
+          finishSimMinute={r.finishSimMinute}
+          planned={planned?.timeline}
+          plannedFinishSimMinute={plannedFinish}
+        />
 
         <h3 style={sectionH}>Who was busy when</h3>
         <p style={sectionP}>
           The same story as a rate: how much of each minute each friend spent busy.
         </p>
         <UtilizationChart utilization={r.utilization} />
+
+        {planned && (
+          <>
+            <h3 style={sectionH}>Your plan against the morning</h3>
+            <p style={sectionP}>
+              Every job you planned, sorted by how far it slipped. A plan is not
+              wrong for drifting — it is wrong when you cannot say why.
+            </p>
+            <VarianceTable
+              planned={planned}
+              timeline={r.timeline}
+              actionLog={sim.actionLog}
+              plannedFinish={plannedFinish}
+              actualFinish={r.finishSimMinute}
+            />
+          </>
+        )}
+
+        {previousRun && (
+          <>
+            <h3 style={sectionH}>Did planning help?</h3>
+            <p style={sectionP}>
+              The same morning, twice: once discovering it, once with a plan.
+            </p>
+            <RunCompare run1={previousRun} run2={r} />
+          </>
+        )}
 
         <button className="btn-big" onClick={onPlayAgain} style={{ marginTop: 22 }}>
           {playAgainLabel}

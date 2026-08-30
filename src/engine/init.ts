@@ -20,31 +20,51 @@ import type {
 // 3: three personal errand tasks — older checkpoints have no state.tasks entry
 //    for them, which would crash accrueWork/checkEnd on dereference.
 // 4: per-minute completion samples for the progress chart.
-export const ENGINE_VERSION = 4;
+// 5: two-run sessions — plan/planCursor/plannedProjection, round, a chaosSeed
+//    split out from the duration seed, and reworkLost per task.
+export const ENGINE_VERSION = 5;
 
 export interface RunOverrides {
   /** Replace the chaos-event schedule entirely (tests). */
   events?: ScheduledEvent[];
   /** Override individual pre-rolls (tests). */
   rolls?: Partial<PreRolls>;
+  /**
+   * Re-roll the disruptions while keeping the task durations. Used by the
+   * "same job, different day" replay: the project is identical, the
+   * interruptions are not.
+   *
+   * Omit it and the RNG is consumed in exactly the order it always was, so
+   * every existing seed produces a byte-identical run.
+   */
+  chaosSeed?: number;
+  /** Round this state belongs to (two-run sessions). Defaults to 1. */
+  round?: 1 | 2;
 }
 
 export function createRun(seed: number, overrides?: RunOverrides): SimState {
   const rng = mulberry32(seed);
 
+  // Durations always come first, off the duration seed — that ordering is what
+  // lets a chaos re-roll leave the project itself untouched.
   const durationMults: Record<string, number> = {};
   for (const t of TASKS) durationMults[t.id] = rng.uniform(0.85, 1.2);
+
+  // Everything below is chaos. With no chaosSeed it stays on the original
+  // stream, in the original order, so legacy seeds are bit-for-bit unchanged.
+  const chaosSeed = overrides?.chaosSeed;
+  const crng = chaosSeed == null ? rng : mulberry32(chaosSeed);
 
   const foundItemRolls: Record<string, number> = {};
   const foundItemBag: Record<string, string> = {};
   const bagIds = ['pack-bag-1', 'pack-bag-2', 'pack-bag-3'];
   for (const [taskId, bag] of Object.entries(FIND_ITEM_TASKS)) {
-    foundItemRolls[taskId] = rng.next();
-    foundItemBag[taskId] = bag === 'any' ? rng.pick(bagIds) : bag;
+    foundItemRolls[taskId] = crng.next();
+    foundItemBag[taskId] = bag === 'any' ? crng.pick(bagIds) : bag;
   }
-  const walkthroughRoll = rng.next();
+  const walkthroughRoll = crng.next();
 
-  const schedule = overrides?.events ?? rollSchedule(rng);
+  const schedule = overrides?.events ?? rollSchedule(crng);
   schedule.sort((a, b) => a.at - b.at);
 
   const rolls: PreRolls = {
@@ -64,6 +84,7 @@ export function createRun(seed: number, overrides?: RunOverrides): SimState {
       assignees: [],
       arriveAt: {},
       reworkCount: 0,
+      reworkLost: 0,
     };
   }
 
@@ -75,6 +96,8 @@ export function createRun(seed: number, overrides?: RunOverrides): SimState {
   return {
     engineVersion: ENGINE_VERSION,
     seed,
+    chaosSeed: chaosSeed ?? seed,
+    round: overrides?.round ?? 1,
     tick: 0,
     outcome: 'running',
     tasks,

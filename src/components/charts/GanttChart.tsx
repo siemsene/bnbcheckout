@@ -8,7 +8,7 @@
 // direct labels, the hover tooltip, and the table fallback — never from hue.
 // Blocked also carries a hatch texture so it is legible without color.
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { CHARACTERS, CHAR_IDS, TASK_BY_ID, TICKS_PER_MINUTE } from '../../engine/content';
 import type { TimelineKind, TimelineSegment } from '../../engine/types';
 
@@ -16,6 +16,8 @@ const INK = '#33322e';
 const MUTED = '#898781';
 const GRID = '#e1e0d9';
 const SURFACE = '#fffaf0';
+/** Muted enough to read as a reference rather than a fourth activity kind. */
+const PLANNED = '#b9b7ae';
 
 const KIND_STYLE: Record<TimelineKind, { fill: string; label: string; hint: string }> = {
   working: { fill: '#2a78d6', label: 'Working', hint: 'producing work on the task' },
@@ -45,12 +47,21 @@ function segLabel(seg: TimelineSegment) {
   return seg.kind === 'travel' ? 'Walking back' : 'No task assigned';
 }
 
-export function GanttChart({
+export const GanttChart = memo(function GanttChart({
   timeline,
   finishSimMinute,
+  planned,
+  plannedFinishSimMinute,
 }: {
   timeline: TimelineSegment[];
   finishSimMinute?: number | null;
+  /**
+   * The schedule the plan predicted, drawn as a thin ghost rail above each row.
+   * Absent for an ordinary run, in which case this renders exactly as it always
+   * did — run 1's results must not change shape.
+   */
+  planned?: TimelineSegment[];
+  plannedFinishSimMinute?: number | null;
 }) {
   const [hover, setHover] = useState<TimelineSegment | null>(null);
 
@@ -96,6 +107,15 @@ export function GanttChart({
             <strong style={{ color: INK }}>{KIND_STYLE[k].label}</strong> — {KIND_STYLE[k].hint}
           </span>
         ))}
+        {planned && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <svg width={14} height={11} aria-hidden>
+              <rect y={3} width={14} height={4} rx={2} fill={PLANNED} />
+            </svg>
+            <strong style={{ color: INK }}>Planned</strong> — what your plan said
+            would happen
+          </span>
+        )}
       </div>
 
       <svg
@@ -143,6 +163,27 @@ export function GanttChart({
               <text x={0} y={barY + BAR_H - 3} fontSize={12} fontWeight={600} fill={INK}>
                 {CHARACTERS[c].name}
               </text>
+
+              {/* The plan, as a ghost rail. There is room above the bar without
+                  changing the row height, so plan and actual line up vertically
+                  and the drift between them is readable at a glance. */}
+              {planned
+                ?.filter((s) => s.charId === c && s.kind === 'working')
+                .map((s, k) => {
+                  const gx = x(s.start / TICKS_PER_MINUTE);
+                  const gw = Math.max(1.2, x(s.end / TICKS_PER_MINUTE) - gx - 1.5);
+                  return (
+                    <rect
+                      key={`p${k}`}
+                      x={gx}
+                      y={top + 1}
+                      width={gw}
+                      height={4}
+                      rx={2}
+                      fill={PLANNED}
+                    />
+                  );
+                })}
               {segs.map((s, k) => {
                 const x0 = x(s.start / TICKS_PER_MINUTE);
                 const x1 = x(s.end / TICKS_PER_MINUTE);
@@ -232,6 +273,30 @@ export function GanttChart({
               fontWeight={600}
             >
               everyone finished ▸
+            </text>
+          </>
+        )}
+
+        {/* where the plan said it would end, for comparison with the real one */}
+        {plannedFinishSimMinute != null && plannedFinishSimMinute < TOTAL_MIN && (
+          <>
+            <line
+              x1={x(plannedFinishSimMinute)}
+              x2={x(plannedFinishSimMinute)}
+              y1={TOP_PAD}
+              y2={TOP_PAD + ROW_H * CHAR_IDS.length}
+              stroke={PLANNED}
+              strokeWidth={1.5}
+              strokeDasharray="2 3"
+            />
+            <text
+              x={x(plannedFinishSimMinute) - 4}
+              y={TOP_PAD + ROW_H * CHAR_IDS.length + 11}
+              fontSize={10}
+              textAnchor="end"
+              fill={MUTED}
+            >
+              plan said here
             </text>
           </>
         )}
@@ -329,7 +394,7 @@ export function GanttChart({
       </details>
     </div>
   );
-}
+});
 
 const thc: React.CSSProperties = {
   textAlign: 'left',

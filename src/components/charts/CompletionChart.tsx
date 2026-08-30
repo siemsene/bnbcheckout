@@ -33,10 +33,17 @@ function clockAt(min: number) {
 export function CompletionChart({
   completion,
   finishSimMinute,
+  compare,
 }: {
   /** completion[simMinute] in [0,1]. */
   completion: number[];
   finishSimMinute?: number | null;
+  /**
+   * An optional reference curve — the plan, or the previous run. When present it
+   * REPLACES the even-pace diagonal, because a real benchmark beats a synthetic
+   * one, and two dashed references on one chart would be a mess.
+   */
+  compare?: { label: string; values: number[] } | null;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   if (completion.length === 0) return null;
@@ -47,6 +54,18 @@ export function CompletionChart({
   const pts = completion.map((v, m) => `${x(m + 1).toFixed(1)},${y(v).toFixed(1)}`);
   const line = `M ${x(0)},${y(0)} L ${pts.join(' L ')}`;
   const area = `${line} L ${x(completion.length)},${y(0)} L ${x(0)},${y(0)} Z`;
+
+  const cmpLine =
+    compare && compare.values.length
+      ? `M ${x(0)},${y(0)} L ` +
+        compare.values.map((v, m) => `${x(m + 1).toFixed(1)},${y(v).toFixed(1)}`).join(' L ')
+      : null;
+  /** When the reference curve hit each milestone, for the table column. */
+  const cmpMilestone = (target: number) => {
+    if (!compare) return null;
+    const i = compare.values.findIndex((v) => v >= target);
+    return i < 0 ? null : i + 1;
+  };
 
   // First minute each quarter was reached — the table view, and far more
   // readable than a per-minute dump.
@@ -92,16 +111,31 @@ export function CompletionChart({
         ))}
 
         {/* Even-pace benchmark: what a perfectly steady 2 hours would look like.
-            Real projects are S-curves, and seeing the gap is the point. */}
-        <line
-          x1={x(0)}
-          y1={y(0)}
-          x2={x(TOTAL_MIN)}
-          y2={y(1)}
-          stroke={MUTED}
-          strokeWidth={1.5}
-          strokeDasharray="5 4"
-        />
+            Real projects are S-curves, and seeing the gap is the point. Dropped
+            when a real reference curve is supplied — a plan or a previous run
+            says more than a straight line, and two dashed references would
+            fight each other. */}
+        {!cmpLine && (
+          <line
+            x1={x(0)}
+            y1={y(0)}
+            x2={x(TOTAL_MIN)}
+            y2={y(1)}
+            stroke={MUTED}
+            strokeWidth={1.5}
+            strokeDasharray="5 4"
+          />
+        )}
+        {cmpLine && (
+          <path
+            d={cmpLine}
+            fill="none"
+            stroke={MUTED}
+            strokeWidth={1.5}
+            strokeDasharray="5 4"
+            strokeLinejoin="round"
+          />
+        )}
         {/* Halo, because the label otherwise sits on top of its own line. */}
         <rect
           x={x(TOTAL_MIN) - 62}
@@ -118,7 +152,7 @@ export function CompletionChart({
           textAnchor="end"
           fill={MUTED}
         >
-          even pace
+          {compare?.label ?? 'even pace'}
         </text>
 
         <path d={area} fill={SERIES} opacity={0.12} />
@@ -189,7 +223,7 @@ export function CompletionChart({
             <tr>
               <th style={thc}>Milestone</th>
               <th style={thc}>Reached at</th>
-              <th style={thc}>Even pace would be</th>
+              <th style={thc}>{compare ? compare.label : 'Even pace would be'}</th>
             </tr>
           </thead>
           <tbody>
@@ -197,7 +231,14 @@ export function CompletionChart({
               <tr key={m.target}>
                 <td style={tdc}>{m.target * 100}% complete</td>
                 <td style={tdc}>{m.minute == null ? 'not reached' : clockAt(m.minute)}</td>
-                <td style={tdc}>{clockAt(m.target * TOTAL_MIN)}</td>
+                <td style={tdc}>
+                  {compare
+                    ? (() => {
+                        const cm = cmpMilestone(m.target);
+                        return cm == null ? 'not reached' : clockAt(cm);
+                      })()
+                    : clockAt(m.target * TOTAL_MIN)}
+                </td>
               </tr>
             ))}
           </tbody>

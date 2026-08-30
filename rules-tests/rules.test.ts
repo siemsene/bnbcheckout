@@ -145,6 +145,55 @@ describe("players/{pid}", () => {
     );
   });
 
+  // --- two-run sessions -------------------------------------------------
+  //
+  // Run 2 restarts the sim clock at zero, which the plain monotonicity rule
+  // reads as going backwards. It would deny every round-2 progress write — and
+  // `writeProgress` swallows its errors, so the leaderboard would simply freeze
+  // for the whole second run with nothing logged anywhere.
+
+  it("simMinute may reset to 0 when the round goes up", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertSucceeds(
+      updateDoc(
+        doc(db, "sessions", SID, "players", PID),
+        playerUpdate({ simMinute: 0, round: 2 })
+      )
+    );
+  });
+
+  it("simMinute still may not go backwards within a round", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertSucceeds(
+      updateDoc(
+        doc(db, "sessions", SID, "players", PID),
+        playerUpdate({ simMinute: 30, round: 2 })
+      )
+    );
+    await assertFails(
+      updateDoc(
+        doc(db, "sessions", SID, "players", PID),
+        playerUpdate({ simMinute: 5, round: 2 })
+      )
+    );
+  });
+
+  it("the round itself may not go backwards", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertSucceeds(
+      updateDoc(
+        doc(db, "sessions", SID, "players", PID),
+        playerUpdate({ simMinute: 40, round: 2 })
+      )
+    );
+    await assertFails(
+      updateDoc(
+        doc(db, "sessions", SID, "players", PID),
+        playerUpdate({ simMinute: 50, round: 1 })
+      )
+    );
+  });
+
   it("changing name is rejected", async () => {
     const db = testEnv.authenticatedContext(STUDENT).firestore();
     await assertFails(
@@ -287,6 +336,26 @@ describe("sessions/{sid}", () => {
       updateDoc(doc(db, "sessions", SID), {
         instructorUid: INSTRUCTOR,
         runStartsAt: new Date(),
+      })
+    );
+  });
+
+  it("instructor cannot stamp the two-run timings either", async () => {
+    // Same reasoning as runStartsAt: every client derives its stage from these,
+    // so a skewed instructor clock must never be able to write them.
+    const db = testEnv
+      .authenticatedContext(INSTRUCTOR, { instructor: true })
+      .firestore();
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        planOpensAt: new Date(),
+      })
+    );
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID), {
+        instructorUid: INSTRUCTOR,
+        run2StartsAt: new Date(),
       })
     );
   });

@@ -61,6 +61,40 @@ export interface TaskDef {
   multiWorkerFactors?: number[];
 }
 
+/**
+ * Why a character is producing nothing right now. Distinct from a multiplier of
+ * zero: the player needs to know *which* of these it is, because the fix differs
+ * (nudge them, wait, or reassign someone eligible).
+ */
+export type BlockReason =
+  | 'no-licence'
+  | 'not-theirs'
+  | 'interrupted'
+  | 'idle'
+  | 'walking'
+  | 'walkback'
+  | 'oncall'
+  | 'distracted'
+  | 'toilet';
+
+/** One named factor in a character's productivity multiplier. */
+export interface MultTerm {
+  key: string;
+  label: string;
+  factor: number;
+  /** Optional extra clause, e.g. "full speed in 2 min". */
+  hint?: string;
+}
+
+/**
+ * The productivity multiplier, decomposed. `personalMult` is defined as the
+ * product of `terms`, so the explanation the player reads can never drift from
+ * the number the engine applies.
+ */
+export type MultExplain =
+  | { blocked: BlockReason }
+  | { terms: MultTerm[]; value: number };
+
 export interface CharDef {
   id: CharId;
   name: string;
@@ -119,6 +153,12 @@ export interface TaskState {
   /** Tick each assignee arrives at the task (transit done). */
   arriveAt: Record<string, number>;
   reworkCount: number;
+  /**
+   * Effective person-seconds that were finished and then taken back. Lets the
+   * progress bar show the ground lost rather than encoding it as a colour —
+   * "amber" was being read as "going slowly", which it never meant.
+   */
+  reworkLost: number;
 }
 
 export type Activity =
@@ -147,6 +187,35 @@ export type Action =
 export interface LoggedAction {
   tick: number;
   action: Action;
+  /**
+   * Who caused this. Absent means the player did it by hand; 'plan' means the
+   * auto-dispatcher followed their committed plan. The difference IS the
+   * variance report — every hand-made action during run 2 is an override.
+   */
+  src?: 'plan';
+}
+
+/**
+ * A student's plan: the order each friend should work through their tasks.
+ * Order is intent; the engine still decides timing, so a plan cannot cheat
+ * precedence, crew limits or transit.
+ */
+export interface Plan {
+  queues: Record<CharId, string[]>;
+  /** Bumped on every edit — the projection's cache key. */
+  rev: number;
+}
+
+/** What a plan is predicted to do, in the same shapes the charts already read. */
+export interface PlannedProjection {
+  timeline: TimelineSegment[];
+  completion: number[];
+  finishSimMinute: number | null;
+  outcome: Outcome;
+  /** Predicted [start, end) tick window per task; null if never scheduled. */
+  taskWindows: Record<string, { start: number; end: number } | null>;
+  /** Tasks no queue ever reached — a plan that cannot finish the project. */
+  unscheduled: string[];
 }
 
 export type SimEvent =
@@ -177,6 +246,14 @@ export interface TimelineSegment {
 export interface SimState {
   engineVersion: number;
   seed: number;
+  /**
+   * Seed for the chaos stream — interruptions, rework rolls, the cat. Split from
+   * `seed` (which drives task durations) so a replay can keep the same project
+   * and re-roll only the disruptions.
+   */
+  chaosSeed: number;
+  /** 1 for a normal run; 2 for the replay half of a two-run session. */
+  round: 1 | 2;
   tick: number;
   outcome: Outcome;
   tasks: Record<string, TaskState>;
@@ -202,6 +279,19 @@ export interface SimState {
    * an index (not a reference) so checkpoints survive JSON round-tripping. */
   openSegIdx: Partial<Record<CharId, number>>;
   actionLog: LoggedAction[];
+
+  /**
+   * The committed plan driving auto-assignment. Absent in a single run and in
+   * practice mode, where `step()` skips the dispatcher entirely — so none of
+   * this can perturb an ordinary game.
+   */
+  plan?: Plan;
+  /**
+   * What the plan predicted, frozen at the moment it was committed. Frozen, not
+   * recomputed, so the debrief compares against the plan the student actually
+   * signed up to.
+   */
+  plannedProjection?: PlannedProjection;
 }
 
 export interface StepResult {

@@ -9,6 +9,7 @@ import type { SimState } from '../engine/types';
 import {
   ensureAnonAuth,
   loadCheckpoint,
+  roundOf,
   saveCheckpoint,
   saveResult,
   subscribePlayers,
@@ -76,6 +77,12 @@ interface SessionStore {
   reportNow(phase: GamePhase): void;
   /** Force a checkpoint write now (used at the end of planning). */
   checkpointNow(): void;
+  /**
+   * Persist run 1's summary before the state is replaced for round 2. Without
+   * this the improvement comparison has nothing to compare against, since the
+   * sim state itself is about to be thrown away.
+   */
+  finishRoundOne(): Promise<void>;
 }
 
 let lastProgressAt = 0;
@@ -215,6 +222,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         lastProgressAt = now;
         const r = summarize(sim);
         const p: ProgressUpdate = {
+          round: sim.round,
           phase:
             phase === 'done'
               ? 'finished'
@@ -235,14 +243,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
       if (now - lastCheckpointAt > CHECKPOINT_INTERVAL_MS || phaseChanged) {
         lastCheckpointAt = now;
-        void saveCheckpoint(identity.sessionId, identity.playerId, uid, serialize(sim)).catch(
-          () => {},
-        );
+        void saveCheckpoint(
+          identity.sessionId, identity.playerId, uid, serialize(sim), sim.round,
+        ).catch(() => {});
       }
 
       if (sim.outcome !== 'running') {
-        void saveResult(identity.sessionId, identity.playerId, uid, summarize(sim)).catch(
-          () => {},
+        void saveResult(
+          identity.sessionId, identity.playerId, uid, summarize(sim), sim.round,
+        ).catch(
         );
       }
     };
@@ -253,9 +262,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       const sim = useSimStore.getState().sim;
       const { identity, uid } = get();
       if (sim && identity && uid) {
-        void saveCheckpoint(identity.sessionId, identity.playerId, uid, serialize(sim)).catch(
-          () => {},
-        );
+        void saveCheckpoint(
+          identity.sessionId, identity.playerId, uid, serialize(sim), sim.round,
+        ).catch(() => {});
       }
     };
     document.addEventListener('visibilitychange', onHide);
@@ -278,11 +287,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const { identity } = get();
     if (!identity) return false;
     try {
-      const cp = await loadCheckpoint(identity.sessionId, identity.playerId);
+      const round = roundOf(stage);
+      const cp = await loadCheckpoint(identity.sessionId, identity.playerId, round);
       if (!cp) return false;
       // Guard against a checkpoint left over from a different session that
       // shares this browser's stored identity.
       if (cp.seed !== identity.seed) return false;
+      // ...and against run 1's snapshot being restored into run 2. Both rounds
+      // share a seed, so the seed check above cannot catch this on its own; a
+      // checkpoint written before `round` existed is a round-1 one.
+      if ((cp.round ?? 1) !== round) return false;
       const state = deserialize(cp);
       if (!state) return false;
       const phase: GamePhase =
@@ -302,6 +316,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
+  async finishRoundOne() {
+    const sim = useSimStore.getState().sim;
+    const { identity, uid } = get();
+    if (!sim || !identity || !uid || sim.round !== 1) return;
+    try {
+      await saveResult(identity.sessionId, identity.playerId, uid, summarize(sim), 1);
+    } catch {
+      /* the debrief degrades to run 2 only; never block the transition */
+    }
+  },
+
   checkpointNow() {
     const sim = useSimStore.getState().sim;
     const { identity, uid } = get();
@@ -312,6 +337,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       identity.playerId,
       uid,
       serialize(sim),
+      sim.round,
     ).catch(() => {});
   },
 
@@ -324,6 +350,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       if (identity) {
         const r = summarize(sim);
         void writeProgress(identity.sessionId, identity.playerId, {
+          round: sim.round,
           phase: phase === 'done' ? 'finished' : (phase as ProgressUpdate['phase']),
           simMinute: Math.floor(simMinute(sim)),
           pctComplete: r.pctComplete,

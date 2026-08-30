@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../../state/authStore';
 import {
   DEFAULT_PLANNING_MINUTES,
+  isTwoRun,
   playerIsDone,
   stageOf,
   subscribeSession,
@@ -85,8 +86,12 @@ export function SessionMonitor() {
   const doneCount = players.filter(playerIsDone).length;
   const planningMinutes =
     session.settings?.planningMinutes ?? DEFAULT_PLANNING_MINUTES;
+  const twoRun = isTwoRun(session);
+  const planMinutes = session.settings?.planMinutes ?? 8;
 
-  async function control(action: 'openPlanning' | 'startNow' | 'end') {
+  async function control(
+    action: 'openPlanning' | 'startNow' | 'end' | 'openPlan2' | 'startNow2',
+  ) {
     if (action === 'end' && !confirm('End the session for everyone and reveal results?')) {
       return;
     }
@@ -123,7 +128,12 @@ export function SessionMonitor() {
             {stage === 'lobby' && 'Lobby — students joining'}
             {stage === 'planning' && `Planning — ${formatCountdown(msUntilStart)} left`}
             {stage === 'countdown' && `Starting in ${Math.ceil(msUntilStart / 1000)}…`}
-            {stage === 'running' && `Running — ${doneCount} of ${players.length} finished`}
+            {stage === 'running' &&
+              `${twoRun ? 'Run 1' : 'Running'} — ${doneCount} of ${players.length} finished`}
+            {stage === 'review1' && 'Run 1 done — students are reading their results'}
+            {stage === 'plan2' && `Planning run 2 — ${formatCountdown(msUntilStart)} left`}
+            {stage === 'countdown2' && `Run 2 starting in ${Math.ceil(msUntilStart / 1000)}…`}
+            {stage === 'running2' && `Run 2 — ${doneCount} of ${players.length} finished`}
             {stage === 'ended' && 'Ended — results revealed'}
           </h2>
           {stage === 'lobby' && (
@@ -137,6 +147,17 @@ export function SessionMonitor() {
               {readyCount < players.length && ` (${players.length - readyCount} not ready)`}
             </button>
           )}
+          {stage === 'review1' && (
+            <button className="btn-big" disabled={busy} onClick={() => control('openPlan2')}>
+              Open the plan board ({planMinutes} min) →
+            </button>
+          )}
+          {stage === 'plan2' && (
+            <button className="btn-big" disabled={busy} onClick={() => control('startNow2')}>
+              ▶ Start run 2
+              {readyCount < players.length && ` (${players.length - readyCount} not ready)`}
+            </button>
+          )}
         </div>
 
         {error && (
@@ -145,7 +166,15 @@ export function SessionMonitor() {
           </p>
         )}
 
-        {(stage === 'planning' || stage === 'countdown') && (
+        {stage === 'review1' && (
+          <p style={{ margin: 0, color: 'var(--ink-soft)' }}>
+            Everyone is looking at their own run‑one results. Opening the plan
+            board reveals the constraints they just discovered and lets them
+            build a plan for the replay — and it clears everybody's ready flag.
+          </p>
+        )}
+
+        {(stage === 'planning' || stage === 'countdown' || stage === 'plan2') && (
           <>
             <strong>
               {readyCount} of {players.length} ready

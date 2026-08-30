@@ -1,6 +1,7 @@
 // Typed wrappers for the Cloud Functions callables.
 
 import { httpsCallable } from 'firebase/functions';
+import type { ReplayScenario, SessionFormat } from './data';
 import { fns } from './client';
 
 export interface JoinSessionResult {
@@ -20,15 +21,25 @@ export async function joinSession(code: string, name: string): Promise<JoinSessi
   return (await fn({ code, name })).data;
 }
 
+export interface CreateSessionOptions {
+  planningMinutes?: number;
+  /** 'single' (default) is the original one-run format. */
+  format?: SessionFormat;
+  /** Two-run only: what run 2 faces. */
+  replayScenario?: ReplayScenario;
+  /** Two-run only: minutes the plan board stays open between the runs. */
+  planMinutes?: number;
+}
+
 export async function createSession(
   title: string,
-  planningMinutes?: number,
+  opts: CreateSessionOptions = {},
 ): Promise<{ sessionId: string; code: string }> {
   const fn = httpsCallable<
-    { title: string; planningMinutes?: number },
+    { title: string } & CreateSessionOptions,
     { sessionId: string; code: string }
   >(fns(), 'createSession');
-  return (await fn({ title, planningMinutes })).data;
+  return (await fn({ title, ...opts })).data;
 }
 
 export interface MarkReadyResult {
@@ -59,7 +70,7 @@ export interface SessionControlResult {
 
 export async function sessionControl(
   sessionId: string,
-  action: 'openPlanning' | 'startNow' | 'end',
+  action: 'openPlanning' | 'startNow' | 'end' | 'openPlan2' | 'startNow2',
 ): Promise<SessionControlResult> {
   const fn = httpsCallable<
     { sessionId: string; action: string },

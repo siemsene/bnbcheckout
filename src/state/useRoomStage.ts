@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import {
   playerIsDone,
+  roundOf,
   stageOf,
   type PlayerDoc,
   type SessionDoc,
@@ -25,6 +26,8 @@ export interface RoomStage {
   session: SessionDoc | null;
   players: PlayerDoc[];
   stage: Stage;
+  /** Which run the room is on. 1 for every single-run session. */
+  round: 1 | 2;
   /** Run start in *client* clock terms (skew-corrected), or null. */
   anchorMs: number | null;
   /** Milliseconds until the run starts; 0 once it has. */
@@ -49,7 +52,13 @@ export function useRoomStage(): RoomStage {
   const now = Date.now() + serverOffsetMs;
   const stage = stageOf(session, now);
 
-  const startsAtServerMs = session?.runStartsAt?.toMillis() ?? null;
+  const round = roundOf(stage);
+  // Each round anchors to its own start instant, so run 2's sim-clock is not
+  // measured from run 1's.
+  const startsAtServerMs =
+    (round === 2
+      ? session?.run2StartsAt?.toMillis()
+      : session?.runStartsAt?.toMillis()) ?? null;
   // Convert the server instant into this client's own clock once, so the hot
   // sim loop can stay on a plain Date.now().
   const anchorMs =
@@ -67,14 +76,18 @@ export function useRoomStage(): RoomStage {
   // length every run has ended whether or not an abandoned tab said so.
   const pastRunWindow =
     anchorMs != null && Date.now() > anchorMs + runWallClockMs() + RUN_OVER_GRACE_MS;
+  const inRun = stage === 'running' || stage === 'running2';
   const allDone =
     stage === 'ended' ||
-    (stage === 'running' && (everyoneFinished || pastRunWindow));
+    // review1 exists precisely because run 1 is over; results are meant to be up.
+    stage === 'review1' ||
+    (inRun && (everyoneFinished || pastRunWindow));
 
   return {
     session,
     players,
     stage,
+    round,
     anchorMs,
     msUntilStart,
     readyCount,
