@@ -168,7 +168,22 @@ export function playerIsDone(p: PlayerDoc): boolean {
 
 export async function ensureAnonAuth(): Promise<string> {
   const a = auth();
-  if (a.currentUser) return a.currentUser.uid;
+  const current = a.currentUser;
+  if (current?.isAnonymous) return current.uid;
+
+  // A real (instructor/admin) account is signed in on this page's Auth
+  // instance. That only happens when an instructor navigates to a student
+  // page inside the same tab, where Auth was already built browser-wide.
+  // Both ways out are wrong: reusing the account stamps the instructor's uid
+  // onto a player doc, and signing in anonymously replaces the shared record
+  // and signs the instructor out of every tab. Say so instead.
+  if (current) {
+    throw new Error(
+      'You are signed in as an instructor in this tab. Open the student page ' +
+        'in a new tab to join as a student.',
+    );
+  }
+
   const cred = await signInAnonymously(a);
   return cred.user.uid;
 }
