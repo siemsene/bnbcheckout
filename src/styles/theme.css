@@ -264,6 +264,51 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 .chip-card-list { display: grid; gap: 2px; }
 .chip-card-list .watchout { color: #a04d22; }
 
+/* Live productivity breakdown inside the hover card: the same factors the
+   engine multiplies, in the same order, so the player can see WHY the number
+   is what it is instead of inferring it. */
+.chip-breakdown {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+.chip-breakdown-head {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  margin-bottom: 2px;
+}
+.chip-breakdown-blocked { color: #a04d22; }
+.chip-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+.chip-breakdown-row i { color: var(--ink-soft); font-style: normal; }
+.chip-breakdown-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip-breakdown-row b.up { color: #22633a; }
+.chip-breakdown-row b.down { color: #a04d22; }
+.chip-breakdown-row.total {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px dashed var(--line);
+  font-weight: 700;
+}
+
+/* A blocked friend keeps a badge rather than losing it, because "why is nothing
+   happening" is exactly when the player needs the answer. */
+.chip-mult.blocked {
+  background: #f2efe6;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.task-eta { color: var(--ink-soft); white-space: nowrap; }
+.task-redone { color: var(--accent-warm); font-weight: 700; font-size: 0.75rem; }
+
 /* ------------------------------------------------------------------- scene */
 
 .scene-wrap {
@@ -760,3 +805,334 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   object-fit: contain;
 }
 .char-card p { font-size: 0.8rem; color: var(--ink-soft); margin: 6px 0 0; }
+
+
+/* ------------------------------------------------------------- plan board */
+
+/* Wider than the results card: the lanes and the 2-hour axis have to sit side by
+   side without either being squeezed. `.overlay-card` pins an explicit `width`
+   as well as a max-width, so both have to be overridden or the card stays 640px
+   and the lanes collapse to unreadable slivers. */
+.plan-card {
+  max-width: 1180px;
+  width: min(96vw, 1180px);
+  max-height: 92vh;
+  padding: 24px 28px;
+}
+
+.plan-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) 1fr;
+  gap: 14px;
+  text-align: left;
+}
+@media (max-width: 880px) {
+  .plan-grid { grid-template-columns: 1fr; }
+}
+
+.plan-palette { padding: 10px; }
+.plan-task-list {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.plan-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 7px;
+  border: 2px solid transparent;
+  border-radius: 9px;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.plan-task:hover { background: var(--bg-soft); }
+.plan-task.picked { border-color: var(--accent); background: #e8f1ea; }
+/* Unplanned work is the single most useful thing to see at a glance. */
+.plan-task.unplanned { background: #fdf3ec; }
+.plan-task-name { flex: 1; font-size: 0.85rem; line-height: 1.25; }
+.plan-task-name em {
+  display: block;
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+.plan-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  min-width: 22px;
+  text-align: right;
+}
+.plan-count.short { color: var(--danger); }
+
+.plan-lanes { display: grid; gap: 10px; align-content: start; }
+/* Two lanes abreast only once each is wide enough for a task name to sit on one
+   or two lines; below that a single column reads far better than two slivers. */
+@media (min-width: 1180px) {
+  .plan-lanes { grid-template-columns: 1fr 1fr; }
+}
+.plan-lane {
+  padding: 9px 10px;
+  border-left: 5px solid var(--chip-color, var(--line));
+}
+.plan-lane.droppable { box-shadow: 0 0 0 2px var(--accent) inset; }
+.plan-lane-head { display: flex; align-items: center; gap: 7px; }
+.plan-lane-head img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+.plan-lane-count { margin-left: auto; font-size: 0.75rem; color: var(--ink-soft); }
+.plan-lane-list {
+  list-style: decimal inside;
+  margin: 6px 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 0.82rem;
+}
+.plan-lane-list li { display: flex; align-items: center; gap: 6px; }
+.plan-lane-task { flex: 1; min-width: 0; }
+.plan-lane-btns { flex-shrink: 0; }
+.plan-lane-empty { color: var(--ink-soft); font-style: italic; }
+.plan-lane-btns { display: flex; gap: 2px; }
+.plan-lane-btns button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 0 5px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.plan-lane-btns button:disabled { opacity: 0.35; cursor: default; }
+.plan-lane-add {
+  width: 100%;
+  border: 1px dashed var(--line);
+  background: none;
+  border-radius: 8px;
+  padding: 4px;
+  font-size: 0.78rem;
+  color: var(--ink-soft) !important;
+  cursor: pointer;
+}
+.plan-lane-add:disabled { opacity: 0.5; cursor: default; }
+
+.plan-verdict {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 16px 0 6px;
+  padding: 12px 14px;
+  background: var(--bg-soft);
+  border-radius: 12px;
+  text-align: left;
+}
+.plan-verdict-big { font-size: 1.25rem; font-weight: 700; }
+.plan-verdict-sub { font-size: 0.82rem; color: var(--ink-soft); }
+.plan-verdict .btn-big { margin-left: auto; }
+
+.plan-issues {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  font-size: 0.82rem;
+}
+.plan-issues .err { color: #a2481f; }
+.plan-issues .warn { color: var(--ink-soft); }
+
+.plan-section {
+  margin: 22px 0 2px;
+  text-align: left;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+.plan-section-note {
+  margin: 0 0 8px;
+  text-align: left;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+/* ------------------------------------------------- instructor session setup */
+
+/* `select` was never given a box, so the two dropdowns in the setup form
+   rendered as raw OS widgets beside the soft rounded inputs — and, being a
+   different height, dragged their labels onto a second baseline. The form no
+   longer uses selects, but the gap stays closed so the next one inherits this. */
+.field select {
+  width: 100%;
+  font: inherit;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+.field select:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
+
+.setup-card { padding: 22px 24px; margin-bottom: 22px; }
+.setup-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.setup-head h2 { font-size: 1.25rem; }
+.setup-head p { margin: 0; color: var(--ink-soft); font-size: 0.88rem; }
+
+/* One labelled block per control, stacked. The old layout was a single flex
+   row with `align-items: flex-end`, which is what put "Format" and "Run 2
+   faces" a row lower than the fields beside them. */
+.setup-label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+.setup-hint {
+  margin: 7px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  max-width: 70ch;
+}
+.setup-fieldset { border: 0; margin: 0 0 20px; padding: 0; min-width: 0; }
+.setup-fieldset > legend { padding: 0; }
+
+/* Radio cards rather than a dropdown: there are only two options each, and
+   both need a sentence to choose between them — which a <select> hides until
+   after you have already picked. */
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(238px, 1fr));
+  gap: 10px;
+}
+.choice { display: block; position: relative; cursor: pointer; }
+/* Visually hidden, NOT zero-sized: a 0x0 control is unreliable for assistive
+   tech and for focus. The clip pattern keeps a real box in the tree. */
+.choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.choice-body {
+  display: block;
+  height: 100%;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px 14px 13px 40px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+/* The dot carries the selection on its own — colour is never the only signal. */
+.choice-body::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 15px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: #fff;
+  box-sizing: border-box;
+}
+.choice:hover .choice-body { border-color: #cdbfa4; }
+.choice input:checked + .choice-body {
+  border-color: var(--accent);
+  background: #eff5f0;
+}
+.choice input:checked + .choice-body::before {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 46%, #fff 47%);
+}
+.choice input:focus-visible + .choice-body {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+.choice-title { display: block; font-weight: 700; }
+.choice-desc {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .choice-body { transition: none; }
+}
+
+/* Minutes: a narrow box with the unit beside it, so the number reads as a
+   duration instead of a bare integer in a full-width field. */
+.setup-times { display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 4px; }
+.time-input { display: flex; align-items: center; gap: 8px; }
+.time-input input {
+  width: 84px;
+  font: inherit;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+.time-input input:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
+.time-unit { color: var(--ink-soft); font-size: 0.9rem; }
+
+.setup-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+/* Session list ------------------------------------------------------------ */
+
+.session-code {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  letter-spacing: 0.08em;
+  background: var(--bg-deep);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.session-main { flex: 1; min-width: 170px; }
+.session-title { display: block; font-weight: 600; }
+.session-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+}
