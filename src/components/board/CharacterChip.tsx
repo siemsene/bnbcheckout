@@ -2,6 +2,7 @@
 // live breakdown of why they are working at the speed they are) and a
 // productivity badge.
 
+import { useCallback, useRef, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { CHARACTERS, TASK_BY_ID } from '../../engine/content';
@@ -53,6 +54,28 @@ export function CharacterChip({
     data: { charId },
   });
 
+  // The card is positioned fixed, from measured coordinates, because the board
+  // it sits in scrolls (`overflow-y: auto`) and an absolutely positioned card
+  // was clipped by it — which is why the productivity breakdown was cut off.
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const [cardPos, setCardPos] = useState<React.CSSProperties | null>(null);
+  const openCard = useCallback(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = 260;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+    const below = window.innerHeight - r.bottom;
+    // Flipping via `bottom` rather than `top` means the card's height never has
+    // to be known in advance.
+    setCardPos(
+      below < 260 && r.top > below
+        ? { left, bottom: window.innerHeight - r.top + 6 }
+        : { left, top: r.bottom + 6 },
+    );
+  }, []);
+  const closeCard = useCallback(() => setCardPos(null), []);
+
   const blocked = explain && 'blocked' in explain ? explain.blocked : null;
   const terms = explain && 'terms' in explain ? explain.terms : null;
   const value = explain && 'terms' in explain ? explain.value : null;
@@ -74,20 +97,32 @@ export function CharacterChip({
     );
   } else if (value != null) {
     badge = (
+      // The warming glyph gets a slot whether or not it is showing. It used to
+      // be inserted and removed as the friend warmed up, which resized the chip
+      // — and with the multiplier changing every tick, the whole roster twitched.
       <span
         className={`chip-mult ${steady! >= 1.15 ? 'good' : steady! < 0.85 ? 'bad' : ''}`}
         aria-label={`working at ${value.toFixed(1)} times normal speed${
           warming ? ', still warming up' : ''
         }`}
       >
-        {warming && <span aria-hidden>⏳</span>}
+        <span className="chip-mult-flag" aria-hidden>
+          {warming ? '⏳' : ''}
+        </span>
         ×{value.toFixed(1)}
       </span>
     );
   }
 
   return (
-    <span className="chip-wrap">
+    <span
+      className="chip-wrap"
+      ref={wrapRef}
+      onMouseEnter={openCard}
+      onMouseLeave={closeCard}
+      onFocusCapture={openCard}
+      onBlurCapture={closeCard}
+    >
       <button
         ref={setNodeRef}
         style={{
@@ -114,13 +149,18 @@ export function CharacterChip({
         </span>
         {CHARACTERS[charId].name}
         {badge}
-        {act.icon && (
-          <span className="chip-status" role="img" aria-label={act.label}>
-            {act.icon}
-          </span>
-        )}
+        {/* Rendered even when empty: the icon coming and going as someone
+            starts walking or takes a call resized the chip mid-run. */}
+        <span
+          className="chip-status"
+          role={act.icon ? 'img' : undefined}
+          aria-label={act.icon ? act.label : undefined}
+        >
+          {act.icon}
+        </span>
       </button>
-      <span className="chip-card" role="tooltip">
+      {cardPos && !isDragging && (
+      <span className="chip-card" role="tooltip" style={cardPos}>
         <strong>{CHARACTERS[charId].name}</strong>
         <em>{CHARACTERS[charId].intro}</em>
         <span className="chip-card-list">
@@ -170,6 +210,7 @@ export function CharacterChip({
           </span>
         )}
       </span>
+      )}
     </span>
   );
 }

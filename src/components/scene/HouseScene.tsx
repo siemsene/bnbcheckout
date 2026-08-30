@@ -32,6 +32,44 @@ const LOAD_SHUTTLE: Record<
  * each trip reads as walk-then-load rather than a continuous glide. */
 const SHUTTLE_LEG_TICKS = 12;
 
+/**
+ * Where each transient event shows up, and how. These events used to exist only
+ * as a line in the ticker, so the thing that had just happened to the run was
+ * invisible in the house it happened in.
+ */
+const FX_SPEC: Record<
+  string,
+  { src?: string; glyph?: string; alt: string; left: number; top: number; width: number }
+> = {
+  // Placed off to the side of each room's character anchor, on the floor line,
+  // so a prop never lands on top of the friends standing there.
+  cat: {
+    src: '/assets/scene/cat.png',
+    alt: 'A cat has wandered into the living room',
+    left: 13,
+    top: 87,
+    width: 9,
+  },
+  neighbor: {
+    src: '/assets/scene/neighbor.png',
+    alt: 'The neighbour is at the front door',
+    left: 40,
+    top: 96,
+    width: 8.5,
+  },
+  'shopping-list': {
+    src: '/assets/scene/shopping-list.png',
+    alt: 'The missing shopping list turned up under the sofa',
+    left: 32,
+    top: 86,
+    width: 5.5,
+  },
+  // No painted prop for these two; a glyph in the right room still tells the
+  // player where to look, which is the part that was missing.
+  spill: { glyph: '💦', alt: 'Something spilled in the kitchen', left: 70, top: 87, width: 4 },
+  music: { glyph: '🎶', alt: 'Music is on — everyone works a little faster', left: 60, top: 72, width: 4 },
+};
+
 const reducedMotion = () =>
   typeof window !== 'undefined' &&
   window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -72,6 +110,7 @@ export function HouseScene() {
   useSimStore((s) => s.version);
   const sim = useSimStore((s) => s.sim);
   const bubbles = useSimStore((s) => s.bubbles);
+  const sceneFx = useSimStore((s) => s.sceneFx);
   const dispatch = useSimStore((s) => s.dispatch);
   if (!sim) return null;
 
@@ -79,7 +118,11 @@ export function HouseScene() {
   const progress = (taskId: string) =>
     Math.min(1, sim.tasks[taskId].workDone / sim.tasks[taskId].workRequired);
 
-  const roomCounts: Partial<Record<RoomId, number>> = {};
+  // Group first, place second. The old single pass grew a room's occupants
+  // rightwards from a fixed `anchor - 7` offset, so one friend alone in a room
+  // stood off against its left wall and never in it. Centring needs the count,
+  // which is only known once everyone has been sorted into rooms.
+  const occupants: Partial<Record<RoomId, CharId[]>> = {};
   const positions: Record<CharId, { x: number; y: number }> = {} as never;
   const shuttling: Partial<Record<CharId, boolean>> = {};
   const facingHouse: Partial<Record<CharId, boolean>> = {};
@@ -92,13 +135,51 @@ export function HouseScene() {
       continue;
     }
     const room = charRoom(sim, c);
-    const idx = roomCounts[room] ?? 0;
-    roomCounts[room] = idx + 1;
+    (occupants[room] ??= []).push(c);
+  }
+  for (const [room, list] of Object.entries(occupants) as [RoomId, CharId[]][]) {
     const a = ROOM_ANCHORS[room];
-    positions[c] = { x: a.x + idx * 5.2 - 7, y: a.y - (idx % 2) * 1.5 };
+    // Tighter as the room fills, so five friends still read as "all in here"
+    // rather than spilling through the wall into the room next door.
+    const gap = list.length <= 2 ? 6.4 : list.length === 3 ? 5.4 : 4.6;
+    list.forEach((c, i) => {
+      positions[c] = {
+        x: a.x + (i - (list.length - 1) / 2) * gap,
+        y: a.y - (i % 2) * 1.6, // slight zigzag keeps overlapping sprites readable
+      };
+    });
   }
 
   const toasts = bubbles.filter((b) => !b.charId);
+
+  /**
+   * Vertical step between stacked bubbles, in % of scene height — sized for a
+   * two-line bubble, which is the common case. A smaller step looked separated
+   * in the collision test while still overlapping on screen.
+   */
+  const BUBBLE_ROW = 13;
+  const stacked: { x: number; y: number }[] = [];
+  const laidOutBubbles = bubbles
+    .filter((b) => b.charId && positions[b.charId])
+    // The scene is only so tall: past three at once, stacking runs off the
+    // roof. The ticker keeps the full record, so nothing is lost by showing
+    // only the newest few.
+    .slice(-3)
+    .map((b) => {
+      const p = positions[b.charId!];
+      const x = Math.min(87, Math.max(13, p.x));
+      let y = p.y - 13;
+      let guard = 0;
+      while (
+        guard++ < 6 &&
+        stacked.some((q) => Math.abs(q.x - x) < 27 && Math.abs(q.y - y) < BUBBLE_ROW)
+      ) {
+        y -= BUBBLE_ROW;
+      }
+      y = Math.max(4, y);
+      stacked.push({ x, y });
+      return { ...b, x, y };
+    });
 
   return (
     <section className="panel scene-wrap" aria-label="House view">
@@ -175,6 +256,31 @@ export function HouseScene() {
           style={{ left: '3%', bottom: '1%', width: '7%' }} />
       )}
 
+      {/* transient event props — cat, neighbour, the found shopping list */}
+      {sceneFx.map((fx) => {
+        const spec = FX_SPEC[fx.kind];
+        if (!spec) return null;
+        return spec.src ? (
+          <img
+            key={fx.id}
+            className="scene-fx"
+            src={spec.src}
+            alt={spec.alt}
+            style={{ left: `${spec.left}%`, top: `${spec.top}%`, width: `${spec.width}%` }}
+          />
+        ) : (
+          <span
+            key={fx.id}
+            className="scene-fx scene-fx-glyph"
+            role="img"
+            aria-label={spec.alt}
+            style={{ left: `${spec.left}%`, top: `${spec.top}%` }}
+          >
+            {spec.glyph}
+          </span>
+        );
+      })}
+
       {/* characters */}
       {CHAR_IDS.map((c) => {
         const meta = CHAR_META[c];
@@ -221,31 +327,36 @@ export function HouseScene() {
               }
             />
             <span className="scene-char-label">{CHARACTERS[c].name}</span>
-            {tool && (
-              <span className="scene-char-tool" aria-hidden>
-                {tool}
-              </span>
-            )}
-            {act.icon && (
-              <span className="scene-char-status" role="img" aria-label={act.label}>
-                {act.icon}
+            {/* Activity symbols sit in one centred row ABOVE the head. They
+                used to be pinned to the top-left and top-right corners, which
+                put them over whoever was standing alongside. */}
+            {(tool || act.icon) && (
+              <span className="scene-char-icons">
+                {tool && (
+                  <span className="scene-char-tool" aria-hidden>
+                    {tool}
+                  </span>
+                )}
+                {act.icon && (
+                  <span className="scene-char-status" role="img" aria-label={act.label}>
+                    {act.icon}
+                  </span>
+                )}
               </span>
             )}
           </button>
         );
       })}
 
-      {/* speech bubbles */}
-      {bubbles
-        .filter((b) => b.charId)
-        .map((b) => {
-          const pos = positions[b.charId!];
-          return (
-            <div key={b.id} className="bubble" style={{ left: `${pos.x}%`, top: `${pos.y - 13}%` }}>
-              {b.text}
-            </div>
-          );
-        })}
+      {/* Speech bubbles. Each is anchored to its speaker, then walked upwards
+          until it clears the ones already placed — two friends working the same
+          room used to print their lines directly on top of each other. Also
+          clamped horizontally so a bubble at the edge is not cut off. */}
+      {laidOutBubbles.map((b) => (
+        <div key={b.id} className="bubble" style={{ left: `${b.x}%`, top: `${b.y}%` }}>
+          {b.text}
+        </div>
+      ))}
       {toasts.length > 0 && (
         <div style={{ position: 'absolute', top: 6, left: 0, right: 0, textAlign: 'center' }}>
           {toasts.slice(-2).map((b) => (

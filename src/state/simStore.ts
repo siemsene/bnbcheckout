@@ -19,6 +19,31 @@ export interface ActiveBubble {
   until: number;
 }
 
+/**
+ * A transient thing to draw in the house: the cat wandering in, the neighbour
+ * at the door, the shopping list turning up. These events previously existed
+ * only as a line of text, so the thing that had just happened to the run was
+ * never visible in the scene it happened in.
+ *
+ * Derived from the events the engine already emits — no engine change, and the
+ * prop disappears on its own like a bubble.
+ */
+export interface SceneFx {
+  id: number;
+  kind: 'cat' | 'neighbor' | 'shopping-list' | 'spill' | 'music';
+  until: number;
+}
+
+/** Which announced event puts which prop on screen. */
+const FX_FOR_KEY: Record<string, SceneFx['kind']> = {
+  'cat-visit': 'cat',
+  'cat-mess': 'cat',
+  doorbell: 'neighbor',
+  'found-shopping-list': 'shopping-list',
+  spill: 'spill',
+  music: 'music',
+};
+
 export interface TickerEntry {
   id: number;
   simMinute: number;
@@ -27,6 +52,9 @@ export interface TickerEntry {
 }
 
 const BUBBLE_MS = 4200;
+/** Scene props linger longer than the line that announces them — a prop that
+ *  vanishes with the bubble is easy to miss entirely. */
+const FX_MS = 9000;
 
 /** Sim speed: 8 ticks/real-second = 120 sim-min in 15 real minutes. A ?speed=
  * URL param (practice mode only) overrides it for testing/demo purposes. */
@@ -56,6 +84,7 @@ interface SimStore {
   phase: GamePhase;
   paused: boolean;
   bubbles: ActiveBubble[];
+  sceneFx: SceneFx[];
   ticker: TickerEntry[];
   /** Click-to-assign fallback: currently selected character (or null). */
   selected: CharId | null;
@@ -100,6 +129,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   phase: 'lobby',
   paused: false,
   bubbles: [],
+  sceneFx: [],
   ticker: [],
   selected: null,
   clockAnchorMs: null,
@@ -130,6 +160,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       phase: 'lobby',
       paused: false,
       bubbles: [],
+  sceneFx: [],
       ticker: [],
       selected: null,
       clockAnchorMs: null,
@@ -234,6 +265,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
     set((s) => ({
       version: s.version + 1,
       bubbles: s.bubbles.filter((b) => b.until > now),
+      sceneFx: s.sceneFx.filter((f) => f.until > now),
       phase: sim.outcome !== 'running' ? 'done' : s.phase,
     }));
     get().onTicked?.(sim);
@@ -248,6 +280,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       phase: 'lobby',
       paused: false,
       bubbles: [],
+  sceneFx: [],
       ticker: [],
       clockAnchorMs: null,
       pauseAllowed: true,
@@ -276,11 +309,14 @@ function ingestEvents(
   const now = Date.now();
   const newBubbles: ActiveBubble[] = [];
   const newTicker: TickerEntry[] = [];
+  const newFx: SceneFx[] = [];
   const minute = Math.floor(sim.tick / 60);
 
   for (const ev of events) {
     switch (ev.type) {
       case 'bubble': {
+        const fx = FX_FOR_KEY[ev.textKey];
+        if (fx) newFx.push({ id: nextId++, kind: fx, until: now + FX_MS });
         const text = bubbleText(ev.textKey, ev.tick);
         if (text) {
           const charId = ev.charId ?? BUBBLES[ev.textKey]?.charId;
@@ -303,6 +339,8 @@ function ingestEvents(
         });
         break;
       case 'rework': {
+        const fxr = FX_FOR_KEY[ev.textKey];
+        if (fxr) newFx.push({ id: nextId++, kind: fxr, until: now + FX_MS });
         const text = bubbleText(ev.textKey, ev.tick);
         newTicker.push({
           id: nextId++,
@@ -335,7 +373,7 @@ function ingestEvents(
     }
   }
 
-  if (newBubbles.length || newTicker.length) {
+  if (newBubbles.length || newTicker.length || newFx.length) {
     set((s) => ({
       // Keep at most one live bubble per character (newest wins).
       bubbles: suppressBubbles
@@ -347,6 +385,11 @@ function ingestEvents(
             ...newBubbles,
           ].slice(-8),
       ticker: [...s.ticker, ...newTicker].slice(-60),
+      // Fast-forward replays the whole backlog; showing every prop at once
+      // would litter the house, so they follow the bubbles' suppression.
+      sceneFx: suppressBubbles
+        ? s.sceneFx
+        : [...s.sceneFx.filter((f) => !newFx.some((n) => n.kind === f.kind)), ...newFx],
     }));
   }
 }

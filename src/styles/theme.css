@@ -148,7 +148,10 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   background: #fff;
   padding: 8px 10px;
   display: grid;
-  grid-template-columns: 34px 1fr auto;
+  /* Two columns, not three. The assignee chips used to sit in a third `auto`
+     column, so two of them took ~180px off the title and "Strip beds & gather
+     towels" wrapped onto three lines with its estimate wrapping under it. */
+  grid-template-columns: 34px minmax(0, 1fr);
   gap: 4px 10px;
   align-items: center;
   transition: border-color 0.15s, background-color 0.15s;
@@ -159,11 +162,11 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 .task-card.drop-full { border-color: var(--danger); }
 .task-icon { width: 34px; height: 34px; }
 .task-name { font-weight: 600; font-size: 0.95rem; }
-.task-blurb { grid-column: 2 / 4; font-size: 0.8rem; color: var(--ink-soft); }
+.task-blurb { grid-column: 2 / -1; font-size: 0.8rem; color: var(--ink-soft); }
 .task-est { font-size: 0.72rem; color: var(--ink-soft); letter-spacing: 0.01em; }
 .task-owner { color: var(--accent-warm); }
 .task-progress {
-  grid-column: 1 / 3;
+  grid-column: 1 / -1;
   height: 8px;
   background: var(--line);
   border-radius: 4px;
@@ -171,8 +174,15 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 }
 .task-progress > div { height: 100%; background: var(--accent); transition: width 0.4s linear; }
 .task-progress.rework > div { background: var(--accent-warm); }
-.task-assignees { display: flex; gap: 4px; grid-column: 3 / 4; justify-content: flex-end; flex-wrap: wrap; }
-.task-lockinfo { grid-column: 2 / 4; font-size: 0.78rem; color: var(--ink-soft); }
+.task-assignees {
+  display: flex;
+  gap: 6px;
+  grid-column: 2 / -1;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.task-lockinfo { grid-column: 2 / -1; font-size: 0.78rem; color: var(--ink-soft); }
 
 /* -------------------------------------------------------------------- chip */
 
@@ -183,6 +193,10 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   border-radius: 999px;
   padding: 3px 10px 3px 4px;
   background: #fff;
+  /* The base `button` rule paints text white, and the chip is a button on a
+     white pill — so every friend's name was rendered white on white and had
+     been invisible all along. */
+  color: var(--ink);
   border: 2px solid var(--chip-color, var(--ink-soft));
   font-size: 0.85rem;
   font-weight: 600;
@@ -224,7 +238,15 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   object-position: top;
   transform: scale(1.6) translateY(18%);
 }
-.chip-status { font-size: 0.8rem; }
+/* Both of these reserve their width whatever they contain. The multiplier
+   changes every tick and the status icon comes and goes, so without a fixed
+   slot every chip on the board resized constantly while the run played. */
+.chip-status {
+  font-size: 0.8rem;
+  width: 1.15em;
+  display: inline-block;
+  text-align: center;
+}
 .chip-mult {
   font-size: 0.7rem;
   font-weight: 700;
@@ -232,19 +254,29 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   border-radius: 8px;
   background: var(--line);
   color: var(--ink-soft);
+  min-width: 4.2em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
 }
+.chip-mult-flag { width: 1em; display: inline-block; text-align: center; }
 .chip-mult.good { background: #dff0e0; color: #22633a; }
 .chip-mult.bad { background: #f7e3d8; color: #a04d22; }
 
 /* hover card ------------------------------------------------------------- */
 .chip-wrap { position: relative; display: inline-block; }
 .chip-card {
-  display: none;
-  position: absolute;
-  left: 0;
-  top: calc(100% + 6px);
+  /* Fixed, from measured coordinates (see CharacterChip): the board scrolls,
+     and an absolutely positioned card was clipped by its overflow, cutting off
+     the productivity breakdown. max-height keeps a long one inside the viewport
+     instead of running off the bottom. */
+  position: fixed;
   z-index: 60;
-  width: 240px;
+  width: 260px;
+  max-height: min(70vh, 430px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: #fffef9;
   border: 2px solid var(--line);
   border-radius: 12px;
@@ -257,8 +289,6 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   font-weight: 400;
   pointer-events: none;
 }
-.chip-wrap:hover .chip-card,
-.chip-wrap:focus-within .chip-card { display: block; }
 .chip-card strong { display: block; font-size: 0.9rem; }
 .chip-card em { display: block; color: var(--ink-soft); margin: 2px 0 6px; }
 .chip-card-list { display: grid; gap: 2px; }
@@ -333,6 +363,40 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   pointer-events: none;
   filter: drop-shadow(0 2px 3px rgba(50, 40, 20, 0.3));
 }
+/* Transient event props. They pop in, hold, and fade — long enough to notice
+   without becoming another thing flickering on screen. */
+.scene-fx {
+  position: absolute;
+  /* The resting state is fully visible. The entrance animation only decorates
+     it — it must never be what makes the prop appear, or the prop is invisible
+     wherever animations do not run (reduced motion, a throttled background
+     tab). Removal is the store's job, on its own timer. */
+  transform: translate(-50%, -100%);
+  opacity: 1;
+  pointer-events: none;
+  z-index: 12;
+  /* A warm halo as well as the shadow: the backdrop is a busy painted room, and
+     a small prop dropped into it otherwise reads as more clutter rather than as
+     the thing that just happened. Static, so it does not depend on animation. */
+  filter: drop-shadow(0 0 7px rgba(217, 136, 74, 0.85))
+    drop-shadow(0 2px 3px rgba(50, 40, 20, 0.35));
+  animation: fx-in 0.45s ease-out;
+}
+.scene-fx-glyph {
+  font-size: 1.8rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(50, 40, 20, 0.45));
+}
+/* Transform only, never opacity: a paused or frozen animation still applies its
+   first keyframe, so animating opacity here would pin the prop at invisible. */
+@keyframes fx-in {
+  from { transform: translate(-50%, -84%) scale(0.8); }
+  to { transform: translate(-50%, -100%) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scene-fx { animation: none; }
+}
+
 .scene-clean {
   position: absolute;
   inset: 0;
@@ -412,10 +476,23 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .scene-char .scene-char-img { animation: none !important; }
 }
-.scene-char-tool {
+/* One centred row of activity symbols above the head. Previously the tool sat
+   at top-left and the status at top-right, so in a shared room each friend's
+   symbols hung over the neighbour standing beside them. */
+.scene-char-icons {
   position: absolute;
-  top: -4px;
-  left: -10px;
+  top: -20px;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.scene-char-tool {
   font-size: 1.05rem;
   animation: tool-wiggle 0.9s ease-in-out infinite;
 }
@@ -435,12 +512,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   padding: 0 4px;
   margin-top: -6px;
 }
-.scene-char-status {
-  position: absolute;
-  top: -14px;
-  right: -8px;
-  font-size: 1rem;
-}
+.scene-char-status { font-size: 1rem; }
 /* Anyone waiting for a nudge always stacks above overlapping room-mates,
    glows, and gets an enlarged badge that doubles as the click target. */
 .scene-char.needs-nudge {
@@ -451,11 +523,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
     drop-shadow(0 2px 2px rgba(50, 40, 20, 0.35));
 }
 .scene-char.needs-nudge .scene-char-status {
-  top: -26px;
-  right: auto;
-  left: 50%;
-  translate: -50% 0; /* keeps centering separate from the scale animation */
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   line-height: 1;
   background: #fffef9;
   border: 2px solid #d97f28;
@@ -479,11 +547,16 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   border: 2px solid var(--ink);
   border-radius: 12px;
   padding: 6px 10px;
-  font-size: 0.8rem;
-  max-width: 190px;
+  font-size: 0.76rem;
+  line-height: 1.3;
+  max-width: 150px;
   box-shadow: var(--shadow);
   z-index: 20;
   pointer-events: none;
+  transition: top 0.25s ease-out, left 0.25s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bubble { transition: none; }
 }
 .bubble::after {
   content: '';
