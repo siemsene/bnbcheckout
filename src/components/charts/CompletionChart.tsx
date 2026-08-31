@@ -9,7 +9,11 @@ import { useState } from 'react';
 import { SIM_DEADLINE_TICKS, TICKS_PER_MINUTE } from '../../engine/content';
 
 const INK = '#33322e';
-const MUTED = '#898781';
+// Chart chrome used to be #898781 hairlines. Projected at the back of a room
+// that is not "muted", it is gone — the reference curve, its label and the axis
+// numbers all disappeared while the solid series stayed. Same role, readable
+// weight: this is the theme's --ink-soft.
+const MUTED = '#6b675e';
 const GRID = '#e1e0d9';
 const SERIES = '#2a78d6'; // validated categorical slot 1 on this surface
 const SURFACE = '#fffaf0';
@@ -55,10 +59,22 @@ export function CompletionChart({
   const line = `M ${x(0)},${y(0)} L ${pts.join(' L ')}`;
   const area = `${line} L ${x(completion.length)},${y(0)} L ${x(0)},${y(0)} Z`;
 
+  /**
+   * The reference curve, carried to the right-hand edge.
+   *
+   * Its array stops when the plan finished — often twenty minutes before the
+   * real run did — and the line used to stop with it, vanishing mid-chart with
+   * nothing to say why. Completion is cumulative, so holding the last value is
+   * not decoration: a plan that was done at 9:31 *was* still done at 10:00.
+   */
+  const cmpLast = compare?.values.length
+    ? compare.values[compare.values.length - 1]
+    : null;
   const cmpLine =
     compare && compare.values.length
       ? `M ${x(0)},${y(0)} L ` +
-        compare.values.map((v, m) => `${x(m + 1).toFixed(1)},${y(v).toFixed(1)}`).join(' L ')
+        compare.values.map((v, m) => `${x(m + 1).toFixed(1)},${y(v).toFixed(1)}`).join(' L ') +
+        ` L ${x(TOTAL_MIN)},${y(cmpLast!)}`
       : null;
   /** When the reference curve hit each milestone, for the table column. */
   const cmpMilestone = (target: number) => {
@@ -104,7 +120,14 @@ export function CompletionChart({
         {[0, 0.25, 0.5, 0.75, 1].map((f) => (
           <g key={f}>
             <line x1={PAD_L} x2={W - PAD_R} y1={y(f)} y2={y(f)} stroke={GRID} strokeWidth={1} />
-            <text x={PAD_L - 7} y={y(f) + 4} fontSize={11} textAnchor="end" fill={MUTED}>
+            <text
+              x={PAD_L - 7}
+              y={y(f) + 4}
+              fontSize={11.5}
+              fontWeight={600}
+              textAnchor="end"
+              fill={MUTED}
+            >
               {f * 100}%
             </text>
           </g>
@@ -122,8 +145,8 @@ export function CompletionChart({
             x2={x(TOTAL_MIN)}
             y2={y(1)}
             stroke={MUTED}
-            strokeWidth={1.5}
-            strokeDasharray="5 4"
+            strokeWidth={2}
+            strokeDasharray="6 4"
           />
         )}
         {cmpLine && (
@@ -131,15 +154,18 @@ export function CompletionChart({
             d={cmpLine}
             fill="none"
             stroke={MUTED}
-            strokeWidth={1.5}
-            strokeDasharray="5 4"
+            strokeWidth={2}
+            strokeDasharray="6 4"
             strokeLinejoin="round"
           />
         )}
-        {/* Halo, because the label otherwise sits on top of its own line. */}
+        {/* Direct-labelled at the end of the line it names. It used to be pinned
+            to the top-right corner, where the old even-pace diagonal finished —
+            so against a real reference curve it floated in empty space,
+            labelling nothing. Halo, because it otherwise sits on its own line. */}
         <rect
           x={x(TOTAL_MIN) - 62}
-          y={y(1) + 5}
+          y={y(cmpLast ?? 1) + 5}
           width={58}
           height={13}
           rx={3}
@@ -147,8 +173,9 @@ export function CompletionChart({
         />
         <text
           x={x(TOTAL_MIN) - 6}
-          y={y(1) + 15}
-          fontSize={10}
+          y={y(cmpLast ?? 1) + 15}
+          fontSize={10.5}
+          fontWeight={600}
           textAnchor="end"
           fill={MUTED}
         >
@@ -207,7 +234,8 @@ export function CompletionChart({
             key={m}
             x={x(m)}
             y={H - 10}
-            fontSize={11}
+            fontSize={11.5}
+            fontWeight={600}
             textAnchor={m === 0 ? 'start' : m === TOTAL_MIN ? 'end' : 'middle'}
             fill={MUTED}
           >

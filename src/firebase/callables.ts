@@ -70,13 +70,36 @@ export interface SessionControlResult {
 
 export async function sessionControl(
   sessionId: string,
-  action: 'openPlanning' | 'startNow' | 'end' | 'openPlan2' | 'startNow2',
+  action:
+    | 'openPlanning'
+    | 'startNow'
+    | 'end'
+    | 'openPlan2'
+    | 'startNow2'
+    | 'skipToPlan2',
+  /** openPlan2 only: move on even though some students are still playing. */
+  opts: { force?: boolean } = {},
 ): Promise<SessionControlResult> {
   const fn = httpsCallable<
-    { sessionId: string; action: string },
+    { sessionId: string; action: string; force?: boolean },
     SessionControlResult
   >(fns(), 'sessionControl');
-  return (await fn({ sessionId, action })).data;
+  return (await fn({ sessionId, action, ...opts })).data;
+}
+
+/**
+ * Remove a finished session and everything under it. Server-side because the
+ * rules forbid client deletes outright, and because players, name tickets and
+ * private checkpoints all hang off the session doc.
+ */
+export async function deleteSession(
+  sessionId: string,
+): Promise<{ deleted: boolean; alreadyGone: boolean }> {
+  const fn = httpsCallable<
+    { sessionId: string },
+    { deleted: boolean; alreadyGone: boolean }
+  >(fns(), 'deleteSession');
+  return (await fn({ sessionId })).data;
 }
 
 export async function getServerTime(): Promise<number> {

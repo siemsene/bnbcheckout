@@ -67,6 +67,19 @@ export const BUBBLES: Record<string, BubbleSpec> = {
   'nudge-toilet-futile': {
     lines: ['Some things cannot be nudged.', 'PLEASE respect my privacy right now.'],
   },
+  'bathroom-occupied': {
+    lines: [
+      'The door is locked. Taro is… in there.',
+      'I am not cleaning a bathroom with Taro inside it.',
+      'Occupied! Give me literally any other job.',
+    ],
+  },
+  'bathroom-evicted': {
+    lines: [
+      'Out! Out! Taro needs the room — bucket down, I’ll come back.',
+      'Cleaning cancelled. I have been evicted.',
+    ],
+  },
 
   // --- Rework ---------------------------------------------------------------
   'rework-bathroom': {

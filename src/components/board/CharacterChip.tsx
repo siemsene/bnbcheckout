@@ -28,6 +28,7 @@ const BLOCK_TEXT: Record<BlockReason, { badge: string; long: string }> = {
   walkback: { badge: '–', long: 'Walking back from an abandoned trip.' },
   oncall: { badge: '–', long: 'On the phone. Click to nudge them.' },
   distracted: { badge: '–', long: 'Distracted. Click to nudge them.' },
+  atdoor: { badge: '–', long: 'Stuck talking to the neighbour. Click to nudge them.' },
   toilet: { badge: '–', long: 'Indisposed. Nudging will not help.' },
 };
 

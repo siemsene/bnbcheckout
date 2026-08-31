@@ -10,7 +10,11 @@
  * Emulator-only: `Bearer owner` is meaningless against a real project.
  *
  *   node scripts/dev_stage.mjs <sessionId> <stage>
- *      stage: planning | running | review1 | plan2 | running2
+ *      stage: planning | running | review1 | plan2 | running2 | skip
+ *
+ * `skip` is the odd one out: it is the instructor's own "skip run 1" control,
+ * so it back-dates nothing and leaves `runStartsAt` unset. The room goes from
+ * the lobby straight to the plan board.
  */
 import { initializeApp } from 'firebase/app';
 import {
@@ -65,22 +69,42 @@ async function main() {
   // Note the REST shape: an unset timestamp comes back as {nullValue: null},
   // which is a truthy object. Test for the timestamp itself.
   const f = await read();
-  if (!f.runStartsAt?.timestampValue) await control('openPlanning');
 
-  if (target === 'planning') return;
+  // Straight from the lobby to the plan board — the real control, not a
+  // back-dated clock, so this takes the same path the instructor's button does.
+  if (target === 'skip') {
+    await control('skipToPlan2');
+    return;
+  }
 
-  // Run 1 in progress.
-  await backdate('runStartsAt', 60_000);
-  if (target === 'running') return;
+  // A session that skipped run 1 has no run-1 clock to arrange, and stamping
+  // one now would undo the very thing `skip` did. Jump straight to the run-2
+  // transitions, so `skip` then `running2` is a working sequence.
+  const skippedRun1 =
+    !!f.planOpensAt?.timestampValue && !f.runStartsAt?.timestampValue;
 
-  // Past the run window (15 real minutes at 8x), so stageOf derives review1.
-  await backdate('runStartsAt', 20 * 60_000);
-  if (target === 'review1') return;
+  if (!skippedRun1) {
+    if (!f.runStartsAt?.timestampValue) await control('openPlanning');
 
-  // Idempotent: these are re-run constantly while iterating on a live session.
-  const f2 = await read();
-  if (!f2.planOpensAt?.timestampValue) await control('openPlan2');
-  if (target === 'plan2') return;
+    if (target === 'planning') return;
+
+    // Run 1 in progress.
+    await backdate('runStartsAt', 60_000);
+    if (target === 'running') return;
+
+    // Past the run window (15 real minutes at 8x), so stageOf derives review1.
+    await backdate('runStartsAt', 20 * 60_000);
+    if (target === 'review1') return;
+
+    // Idempotent: these are re-run constantly while iterating on a live session.
+    const f2 = await read();
+    if (!f2.planOpensAt?.timestampValue) await control('openPlan2');
+    if (target === 'plan2') return;
+  } else if (target !== 'running2') {
+    // The board is already open and there is no run 1 to rewind to.
+    console.log(`run 1 was skipped; session is already at plan2`);
+    return;
+  }
 
   await control('startNow2');
   await backdate('run2StartsAt', 30_000);

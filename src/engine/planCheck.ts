@@ -72,6 +72,25 @@ export function checkPlan(plan: Plan): PlanIssue[] {
           `${holders.length} ${holders.length === 1 ? 'is' : 'are'} down for it.`,
       });
     }
+
+    // 3b. More hands signed up than the job has room for. Not fatal — the
+    //     dispatcher refuses the extra slot and sends that person down their
+    //     own queue instead — but the lane does not run the way it reads, and
+    //     their block never starts. The board caps crews, so this can only
+    //     arrive from a plan built before it did.
+    if (holders.length > def.maxWorkers) {
+      const spare = holders.length - def.maxWorkers;
+      issues.push({
+        level: 'warn',
+        key: `crowded:${def.id}`,
+        taskId: def.id,
+        text:
+          `${holders.length} people are down for ${def.name}, but only ` +
+          `${def.maxWorkers} can work on it at once. ${
+            spare === 1 ? 'One of them' : `${spare} of them`
+          } will skip it and get on with their next job.`,
+      });
+    }
   }
 
   // 4. Order within a lane that contradicts the task graph. Not fatal — the

@@ -36,6 +36,13 @@ export interface RoomStage {
   playerCount: number;
   /** Every player's run is over, so results may be revealed to everyone. */
   allDone: boolean;
+  /**
+   * The room's window for the round now in progress has elapsed, whatever this
+   * client's own sim clock thinks. Run 1 has `review1` to mark its end, but run
+   * 2 has no stage past `running2`, so without this a client that fell behind
+   * keeps playing a run the rest of the class has already finished.
+   */
+  runOver: boolean;
 }
 
 export function useRoomStage(): RoomStage {
@@ -93,6 +100,7 @@ export function useRoomStage(): RoomStage {
     readyCount,
     playerCount: players.length,
     allDone,
+    runOver: inRun && pastRunWindow,
   };
 }
 

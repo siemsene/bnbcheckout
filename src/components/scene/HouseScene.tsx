@@ -19,6 +19,13 @@ const ROOM_ANCHORS: Record<RoomId, { x: number; y: number }> = {
   outside: { x: 36, y: 97 },
 };
 
+/**
+ * The neighbour waits at the side of the house, clear of the driveway where the
+ * cars are loaded, and whoever she catches goes over to her. Left of the front
+ * wall, on the same ground line everything else outside stands on.
+ */
+const DOORSTEP = { neighbour: { x: 5.5, y: 96 }, friend: { x: 12.5, y: 96.5 } };
+
 /** Loading a car is a shuttle: bags come out of the house one armful at a time.
  * Each leg is a position swap that the .scene-char CSS transition walks out. */
 const LOAD_SHUTTLE: Record<
@@ -49,13 +56,6 @@ const FX_SPEC: Record<
     left: 13,
     top: 87,
     width: 9,
-  },
-  neighbor: {
-    src: '/assets/scene/neighbor.png',
-    alt: 'The neighbour is at the front door',
-    left: 40,
-    top: 96,
-    width: 8.5,
   },
   'shopping-list': {
     src: '/assets/scene/shopping-list.png',
@@ -127,6 +127,19 @@ export function HouseScene() {
   const shuttling: Partial<Record<CharId, boolean>> = {};
   const facingHouse: Partial<Record<CharId, boolean>> = {};
   for (const c of CHAR_IDS) {
+    // Caught by the neighbour: they are outside talking, not in the room their
+    // task is in. Placed here rather than via a room anchor so the CSS
+    // transition on .scene-char walks them out and back.
+    const rescuing =
+      c === PLAYER_CHAR && sim.nudge && sim.chars[sim.nudge.target].activity === 'atdoor';
+    if (sim.chars[c].activity === 'atdoor' || rescuing) {
+      // Sora arrives a step behind whoever she is coming to extract.
+      positions[c] = rescuing
+        ? { x: DOORSTEP.friend.x + 6, y: DOORSTEP.friend.y }
+        : DOORSTEP.friend;
+      facingHouse[c] = false;
+      continue;
+    }
     const trip = loadShuttle(sim, c);
     if (trip) {
       positions[c] = { x: trip.x, y: trip.y };
@@ -149,6 +162,8 @@ export function HouseScene() {
       };
     });
   }
+
+  const atTheDoor = CHAR_IDS.filter((c) => sim.chars[c].activity === 'atdoor');
 
   const toasts = bubbles.filter((b) => !b.charId);
 
@@ -280,6 +295,23 @@ export function HouseScene() {
           </span>
         );
       })}
+
+      {/* The neighbour, drawn from simulation state rather than on a timer: she
+          is here for as long as she is actually keeping somebody, which is the
+          3-4 minutes the engine says, not a fixed animation length. */}
+      {atTheDoor.length > 0 && (
+        <img
+          className="scene-neighbour"
+          src="/assets/chars/neighbor-chibi.png"
+          alt={`The neighbour has come round and is talking to ${atTheDoor
+            .map((c) => CHARACTERS[c].name)
+            .join(' and ')}`}
+          style={{
+            left: `${DOORSTEP.neighbour.x}%`,
+            top: `${DOORSTEP.neighbour.y}%`,
+          }}
+        />
+      )}
 
       {/* characters */}
       {CHAR_IDS.map((c) => {

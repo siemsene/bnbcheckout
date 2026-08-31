@@ -106,7 +106,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
 /** Default planning-stage cap, in minutes. Mirrors the client constant. */
 const DEFAULT_PLANNING_MINUTES = 5;
 /** Minutes the between-runs plan board stays open in a two-run session. */
-const DEFAULT_PLAN_MINUTES = 8;
+const DEFAULT_PLAN_MINUTES = 12;
 
 /** Wall-clock ms one run lasts, mirroring runWindowMs on the client. */
 function runWindowMs(session: FirebaseFirestore.DocumentData): number {
@@ -646,6 +646,7 @@ export const sessionControl = onCall(async (request) => {
     // Two-run only.
     "openPlan2",
     "startNow2",
+    "skipToPlan2",
   ] as const;
   if (typeof sessionId !== "string" || !ACTIONS.includes(action)) {
     throw new HttpsError(
@@ -666,7 +667,7 @@ export const sessionControl = onCall(async (request) => {
     // Firestore transactions require every read before the first write, so the
     // roster is fetched up front even though only openPlan2 uses it.
     const playerDocs =
-      action === "openPlan2"
+      action === "openPlan2" || action === "skipToPlan2"
         ? (await tx.get(sessionRef.collection("players"))).docs
         : [];
 
@@ -718,12 +719,28 @@ export const sessionControl = onCall(async (request) => {
       if (session.planOpensAt) {
         throw new HttpsError("failed-precondition", "Planning is already open.");
       }
-      if (existingMs == null || now < existingMs + runWindowMs(session)) {
-        // Not simply pedantry: opening early would drag students out of a run
-        // that, as far as their own clock is concerned, is still going.
+      if (existingMs == null) {
+        throw new HttpsError("failed-precondition", "Run 1 has not started yet.");
+      }
+      // Run 1 is over when its wall-clock window expires OR when every student
+      // has finished — which is the normal case, since a class that plans well
+      // beats the two-hour morning with real minutes to spare. Requiring the
+      // window alone left the instructor watching "5 of 5 finished" with no
+      // control but "End session", and the second run unreachable.
+      const everyoneDone =
+        playerDocs.length > 0 &&
+        playerDocs.every((p) => {
+          const phase = p.data().phase;
+          return phase === "finished" || phase === "abandoned";
+        });
+      const windowElapsed = now >= existingMs + runWindowMs(session);
+      // The instructor is the authority in the room: a dead tab among thirty
+      // students must not be able to hold the whole class in run 1.
+      const force = request.data?.force === true;
+      if (!windowElapsed && !everyoneDone && !force) {
         throw new HttpsError(
           "failed-precondition",
-          "Run 1 is still going. Wait for it to finish, or end the session."
+          "Run 1 is still going. Wait for everyone to finish, or open it anyway."
         );
       }
       // Clearing `ready` is load-bearing. Rules make it function-only, so if it
@@ -731,6 +748,30 @@ export const sessionControl = onCall(async (request) => {
       // markReady starts run 2 the instant the board opens.
       for (const p of playerDocs) tx.update(p.ref, { ready: false });
       tx.update(sessionRef, {
+        planOpensAt: Timestamp.fromMillis(now),
+        run2StartsAt: Timestamp.fromMillis(now + planMinutes(session) * 60_000),
+        readyCount: 0,
+      });
+    } else if (action === "skipToPlan2") {
+      // Straight from the lobby to the plan board, for trying the second half
+      // of the format out without playing the first. `runStartsAt` is left
+      // unstamped on purpose: `stageOf` reads the run-2 instants before it, so
+      // the room never derives a run-1 stage and there is no run 1 to skip out
+      // of. Students land on the plan board with nothing to plan FROM, which is
+      // exactly what makes this a testing shortcut rather than a lesson.
+      requireTwoRun(session);
+      if (session.status !== "lobby") {
+        throw new HttpsError(
+          "failed-precondition",
+          "This session has already started. Open the plan board the usual way."
+        );
+      }
+      status = "planning";
+      // Same reason as openPlan2: `ready` is function-only, so a stale flag
+      // from the lobby would start run 2 the instant the board opened.
+      for (const p of playerDocs) tx.update(p.ref, {ready: false});
+      tx.update(sessionRef, {
+        status: "planning",
         planOpensAt: Timestamp.fromMillis(now),
         run2StartsAt: Timestamp.fromMillis(now + planMinutes(session) * 60_000),
         readyCount: 0,
@@ -766,6 +807,70 @@ export const getServerTime = onCall(async (request) => {
   }
   return { serverNowMs: Date.now() };
 });
+
+// ---------------------------------------------------------------------------
+// 6. deleteSession — an instructor removes one of their own old sessions.
+// ---------------------------------------------------------------------------
+export const deleteSession = onCall(async (request) => {
+  if (request.auth?.token?.instructor !== true) {
+    throw new HttpsError("permission-denied", "Instructor privileges required.");
+  }
+  const sessionId = request.data?.sessionId;
+  if (typeof sessionId !== "string" || sessionId.length === 0) {
+    throw new HttpsError("invalid-argument", "Expected { sessionId: string }.");
+  }
+
+  const sessionRef = db.collection("sessions").doc(sessionId);
+  const snap = await sessionRef.get();
+  // Already gone is the outcome the caller wanted; don't make them care whether
+  // a double-click or a stale list got here first.
+  if (!snap.exists) return { deleted: true, alreadyGone: true };
+
+  const session = snap.data()!;
+  if (session.instructorUid !== request.auth!.uid) {
+    throw new HttpsError("permission-denied", "Not your session.");
+  }
+
+  // Refuse while a run is actually under way. Deleting then would strand every
+  // student mid-run on a session doc that stops existing under them.
+  const status = session.status as string;
+  if (status !== "ended" && status !== "lobby" && !runsAreOver(session)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "This session is still running. End it first, then delete it."
+    );
+  }
+
+  const code = session.code as string | undefined;
+  // Players, their name tickets and their private checkpoints all hang off the
+  // session, so a plain delete would orphan them.
+  await db.recursiveDelete(sessionRef);
+  if (code) {
+    // Free the join code for reuse; it lives in a top-level collection.
+    await db.collection("sessionCodes").doc(code).delete();
+  }
+  logger.info("session deleted", { sessionId, by: request.auth!.uid });
+  return { deleted: true, alreadyGone: false };
+});
+
+/** True once every run this session will ever have is behind us. */
+function runsAreOver(session: FirebaseFirestore.DocumentData): boolean {
+  const window = runWindowMs(session);
+  const now = Date.now();
+  const startedAt =
+    session.runStartsAt instanceof Timestamp ? session.runStartsAt.toMillis() : null;
+  if (startedAt == null) return false;
+  if (session.settings?.format === "two-run") {
+    const r2 =
+      session.run2StartsAt instanceof Timestamp
+        ? session.run2StartsAt.toMillis()
+        : null;
+    // The plan board is open or run 2 is pending: not over yet.
+    if (session.planOpensAt && r2 == null) return false;
+    if (r2 != null) return now >= r2 + window;
+  }
+  return now >= startedAt + window;
+}
 
 // ---------------------------------------------------------------------------
 // 6. cleanupSessions — daily purge of sessions older than 30 days.

@@ -202,7 +202,7 @@ async function main() {
   console.log('');
   console.log(`  Session id   ${info.sessionId}  (${info.format})`);
   console.log(`  Skip ahead   node scripts/dev_stage.mjs ${info.sessionId} running`);
-  console.log('               stages: planning running review1 plan2 running2');
+  console.log('               stages: planning running review1 plan2 running2 skip');
   console.log(RULE);
   console.log('  Ctrl+C stops the emulators and the dev server.\n');
 }

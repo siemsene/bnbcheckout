@@ -111,6 +111,28 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   transition: width 0.5s linear;
 }
 .hud-progress { font-weight: 600; white-space: nowrap; }
+/* Only on screen while somebody is actually stuck, so it stays a signal. */
+.hud-nudge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #7a3f12;
+  background: #fdf0e2;
+  border: 2px solid var(--accent-warm);
+  border-radius: 999px;
+  padding: 4px 12px;
+  animation: nudge-hint 1.6s ease-in-out infinite;
+}
+@keyframes nudge-hint {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 136, 74, 0.55); }
+  50% { box-shadow: 0 0 0 6px rgba(217, 136, 74, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-nudge { animation: none; }
+}
 
 /* ------------------------------------------------------------------- board */
 
@@ -395,6 +417,26 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .scene-fx { animation: none; }
+}
+
+/* The neighbour stands on the same ground line as everyone outside, at the
+   width of a character sprite so she reads as one of the cast rather than a
+   prop. She fades in once — never a loop, since the board beside her is being
+   read — and reduced motion gets her without the entrance. */
+.scene-neighbour {
+  position: absolute;
+  width: 58px;
+  margin-left: -29px;
+  transform: translateY(-92%);
+  pointer-events: none;
+  animation: neighbour-in 420ms ease-out;
+}
+@keyframes neighbour-in {
+  from { transform: translateY(-92%) translateX(-14px); }
+  to { transform: translateY(-92%) translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scene-neighbour { animation: none; }
 }
 
 .scene-clean {
@@ -1191,6 +1233,37 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 
 /* Session list ------------------------------------------------------------ */
 
+/* The row holds a link plus a delete control, so the link covers only the part
+   that navigates rather than swallowing the whole card. */
+.session-row { gap: 12px; }
+.session-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 10px;
+}
+.session-link:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+.session-delete { padding: 6px 12px; font-size: 0.85rem; }
+.monitor-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+.session-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+.btn-danger { background: var(--danger); color: #fff; }
+
 .session-code {
   font-family: var(--font-display);
   font-size: 1.3rem;
@@ -1208,4 +1281,284 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   margin-top: 2px;
   font-size: 0.84rem;
   color: var(--ink-soft);
+}
+
+/* ------------------------------------------------- plan Gantt (drag to plan) */
+
+.pg { display: grid; gap: 4px; }
+.pg-axis, .pg-row { display: grid; grid-template-columns: 116px 1fr; align-items: center; gap: 8px; }
+.pg-axis-track { position: relative; height: 20px; }
+.pg-tick { position: absolute; top: 0; transform: translateX(-50%); text-align: center; }
+.pg-tick i { display: block; width: 1px; height: 7px; background: var(--line); margin: 0 auto; }
+.pg-tick em {
+  font-style: normal;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.pg-row-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border-left: 4px solid var(--chip-color);
+  padding-left: 6px;
+  min-width: 0;
+}
+.pg-row-label img { width: 26px; height: 26px; object-fit: contain; }
+.pg-row-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pg-lane {
+  position: relative;
+  height: 40px;
+  border: 2px dashed transparent;
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 12.5%),
+    #fffdf7;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+.pg-lane.is-over { border-color: var(--accent); background-color: #eef5ef; }
+/* A row that cannot take the job in hand says so before the drop, not after. */
+.pg-lane.is-blocked { border-color: #e0c0b4; background-color: #fbf1ec; opacity: 0.75; }
+@media (prefers-reduced-motion: reduce) { .pg-lane { transition: none; } }
+
+.pg-empty {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  pointer-events: none;
+}
+
+.pg-block {
+  position: absolute;
+  top: 5px;
+  height: 30px;
+  min-width: 26px;
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border: 2px solid #1f5fae;
+  border-radius: 8px;
+  background: #2a78d6;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: grab;
+  overflow: hidden;
+  text-align: left;
+}
+.pg-block:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.pg-block.is-dragging { opacity: 0.45; }
+.pg-block-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A job the morning never reaches: it has no span, so it gets a marker instead
+   of a bar, sitting where the friend ran out of time. */
+.pg-block-never {
+  background: #f2efe6;
+  color: #a04d22;
+  border-color: #e0a89c;
+  border-style: dashed;
+  gap: 5px;
+}
+/* Different from never-reached, and deliberately calmer: the job DID get done,
+   the second person just never needed to help. That is a working plan, not a
+   broken one, so it must not wear the alarming dashed-orange treatment. */
+.pg-block-late {
+  background: #eef1f4;
+  color: #55606b;
+  border-color: #c9d2da;
+  border-style: dotted;
+  gap: 5px;
+}
+.pg-never { font-weight: 700; opacity: 0.85; }
+
+/* Who else is signed up. `margin-left: auto` + `flex-shrink: 0` means the job
+   name ellipsizes away first: on a block squeezed to its 26px floor the
+   initials are the last thing standing, which is the right priority — "shared,
+   with Ke" is more use than half a word. */
+.pg-mates { display: inline-flex; margin-left: auto; padding-left: 4px; flex-shrink: 0; }
+.pg-mates i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: -4px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  background: var(--chip-color);
+  color: #fff;
+  font-style: normal;
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+/* The backstop for when even the initials are clipped. */
+.pg-block.is-shared { box-shadow: inset 3px 0 0 var(--gold); }
+
+/* Waiting time is the whole lesson of a precedence constraint, so it is drawn
+   rather than left as blank lane. */
+.pg-wait {
+  position: absolute;
+  top: 13px;
+  height: 14px;
+  padding: 0;
+  border-radius: 7px;
+  background: repeating-linear-gradient(135deg, #e6dfcd 0 5px, #f2ece0 5px 10px);
+  border: 1px solid #ded5c0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  font: inherit;
+}
+.pg-wait:hover { border-color: var(--accent); background: #eef5ef; }
+.pg-wait:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.pg-wait-label { font-size: 0.6rem; color: var(--ink-soft); white-space: nowrap; padding: 0 4px; }
+
+/* Reserved on purpose. Solid where a mere gap is striped, because the
+   difference between "nobody got round to it" and "this time is spoken for" is
+   the whole point of planning slack. */
+.pg-slack {
+  position: absolute;
+  top: 9px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed #9db3a4;
+  border-radius: 8px;
+  background: #eaf1ea;
+  color: #3f5c49;
+  overflow: hidden;
+  cursor: default;
+  font: inherit;
+}
+.pg-slack:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+/* Put there on purpose. Solid where derived slack is dashed, so "I planned
+   this" and "the schedule happens to have a hole here" never look alike. */
+.pg-slack.is-manual {
+  border-style: solid;
+  border-color: var(--accent);
+  background: #dceadf;
+  color: #2f4a38;
+  cursor: context-menu;
+}
+/* While the slack pick is armed, the jobs that can take it say so. */
+.pg-block.takes-slack {
+  cursor: copy;
+  box-shadow: 0 0 0 2px var(--gold);
+}
+.pg-slack-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+  padding: 0 4px;
+  letter-spacing: 0.02em;
+}
+
+.pg-refused { margin: 2px 0 0; color: var(--danger); font-size: 0.85rem; font-weight: 600; }
+
+.pg-tray {
+  margin-top: 8px;
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fffdf7;
+}
+.pg-tray.is-over { border-color: var(--accent); background: #eef5ef; }
+.pg-tray-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.pg-tray-head span { font-size: 0.8rem; color: var(--ink-soft); }
+.pg-tray-list { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* The chip is a container, not a button: the body is the draggable, and the
+   crew shortcut sits BESIDE it (a button inside a button is invalid, and
+   dnd-kit's listeners on the body would swallow its clicks anyway). */
+.pg-tray-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  padding: 5px 10px 5px 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.pg-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: grab;
+}
+.pg-tray-chip em { display: block; font-style: normal; font-weight: 400; font-size: 0.7rem; color: var(--ink-soft); }
+/* Precedence, stated rather than implied. Its own line and its own colour so a
+   constrained job is obvious in a tray of twenty, with the names doing the
+   work — the chain is decoration, never the only signal. */
+.pg-tray-waits {
+  margin-top: 1px;
+  color: #7a3f12 !important;
+  font-weight: 600 !important;
+  font-size: 0.66rem !important;
+}
+.pg-slack-chip {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: #f3f7f3;
+  cursor: pointer;
+}
+.pg-tray-chip .pg-mates { margin-left: 2px; }
+.pg-tray-chip.picked { border-color: var(--accent); background: #eef5ef; }
+.pg-tray-chip.is-dragging { opacity: 0.45; }
+.pg-chip-main:focus-visible,
+.pg-chip-all:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.pg-chip-all {
+  flex-shrink: 0;
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pg-chip-all:hover { background: #eef5ef; }
+.pg-chip-done {
+  flex-shrink: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-soft);
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pg-chip-done:hover { background: #f2efe6; color: var(--ink); }
+.pg-idle-warn {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #7a3f12;
+  background: #fdf0e2;
+  border: 1px solid var(--accent-warm);
+  border-radius: 8px;
+  padding: 6px 10px;
 }

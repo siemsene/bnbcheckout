@@ -40,6 +40,9 @@ export const FOUND_ITEM_THRESHOLD_HANA = 0.65;
 export const FOUND_ITEM_THRESHOLD_OTHERS = 0.25;
 export const REPACK_EXTRA_SECONDS = 4 * 60;
 
+/** The one room that can be occupied — several rules hang off it. */
+export const BATHROOM_TASK = 'clean-bathroom';
+
 /** Bathroom rework after a toilet emergency: this share of done work is lost. */
 export const BATHROOM_REWORK_FRACTION = 0.5;
 

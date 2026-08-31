@@ -2,7 +2,8 @@
 // pause — always available in practice, but absent during a synchronized
 // classroom run, where the room shares one clock that nobody may stop.
 
-import { SIM_DEADLINE_TICKS } from '../../engine/content';
+import { CHARACTERS, CHAR_IDS, SIM_DEADLINE_TICKS } from '../../engine/content';
+import { ACTIVITY_META } from '../../content/charMeta';
 import { pctComplete } from '../../engine/scoring';
 import { useSimStore } from '../../state/simStore';
 
@@ -21,6 +22,12 @@ export function HUD() {
   const pauseAllowed = useSimStore((s) => s.pauseAllowed);
   const setPaused = useSimStore((s) => s.setPaused);
   if (!sim) return null;
+
+  // Being nudgeable is the one thing in the run that needs the player to DO
+  // something, and the only cue was a pulsing badge on the sprite — which says
+  // "look at me", not "click me". Name them, and say what to do.
+  const stuck = CHAR_IDS.filter((c) => ACTIVITY_META[sim.chars[c].activity].nudgeable);
+  const stuckNames = stuck.map((c) => CHARACTERS[c].name);
 
   const pct = Math.round(pctComplete(sim) * 100);
   const timePct = Math.min(100, (sim.tick / SIM_DEADLINE_TICKS) * 100);
@@ -44,6 +51,20 @@ export function HUD() {
       <div className="hud-progress" aria-live="off">
         {pct}% done
       </div>
+      {phase === 'running' && stuck.length > 0 && (
+        <div className="hud-nudge" role="status">
+          <span aria-hidden>👆</span>
+          <span>
+            <strong>
+              {stuckNames.slice(0, -1).join(', ')}
+              {stuckNames.length > 1 ? ' and ' : ''}
+              {stuckNames[stuckNames.length - 1]}
+            </strong>{' '}
+            {stuckNames.length > 1 ? 'have' : 'has'} stopped — click them in the
+            house to get going
+          </span>
+        </div>
+      )}
       {pauseAllowed && phase === 'running' && (
         <button onClick={() => setPaused(!paused)} aria-pressed={paused}>
           {paused ? '▶ Resume' : '⏸ Pause'}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../state/authStore';
-import { createSession } from '../../firebase/callables';
+import { createSession, deleteSession } from '../../firebase/callables';
 import { Shell } from '../../components/brand/Shell';
 import {
   DEFAULT_PLANNING_MINUTES,
@@ -134,13 +134,19 @@ export function Dashboard() {
   // Two-run is opt-in. A plain single run stays the default, so nothing about
   // the existing class format changes unless an instructor asks for it.
   const [format, setFormat] = useState<SessionFormat>('single');
-  const [planMinutes, setPlanMinutes] = useState(8);
+  const [planMinutes, setPlanMinutes] = useState(12);
   const [replayScenario, setReplayScenario] = useState<ReplayScenario>('sameSeed');
   const [creating, setCreating] = useState(false);
   // The form is tall enough to bury the session list, so it collapses once
   // there is a list to bury. Derived rather than stored, because `sessions`
   // arrives asynchronously and initial state cannot wait for it.
   const [formOpen, setFormOpen] = useState(false);
+  // Two-step inline confirm rather than window.confirm: deleting a session is
+  // irreversible and takes its players' results with it, and a native modal
+  // gives no room to say so.
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => init(), [init]);
@@ -322,22 +328,78 @@ export function Dashboard() {
         </button>
       )}
 
+      {deleteError && (
+        <p role="alert" className="card" style={{ color: 'var(--danger)', marginBottom: 10 }}>
+          {deleteError}
+        </p>
+      )}
+
       <div style={{ display: 'grid', gap: 10 }}>
         {sessions.map((s) => (
-          <Link key={s.id} to={`/instructor/session/${s.id}`} className="card card-link">
-            <strong className="session-code">{s.code}</strong>
-            <span className="session-main">
-              <span className="session-title">{s.title}</span>
-              {/* Format was invisible in the list, which is the one thing you
-                  need when picking between two sessions of the same class. */}
-              <span className="session-meta">
-                {s.settings?.format === 'two-run' ? 'Two runs' : 'One run'}
-                {' · '}
-                {s.playerCount} {s.playerCount === 1 ? 'player' : 'players'}
+          <div key={s.id} className="card card-row session-row">
+            {/* The row is no longer one big link: it now holds a button, and a
+                button inside an anchor is neither valid nor operable. */}
+            <Link to={`/instructor/session/${s.id}`} className="session-link">
+              <strong className="session-code">{s.code}</strong>
+              <span className="session-main">
+                <span className="session-title">{s.title}</span>
+                {/* Format was invisible in the list, which is the one thing you
+                    need when picking between two sessions of the same class. */}
+                <span className="session-meta">
+                  {s.settings?.format === 'two-run' ? 'Two runs' : 'One run'}
+                  {' · '}
+                  {s.playerCount} {s.playerCount === 1 ? 'player' : 'players'}
+                </span>
               </span>
-            </span>
+            </Link>
             <StageBadge session={s} />
-          </Link>
+            {confirmDelete === s.id ? (
+              <span className="session-confirm">
+                <span>Delete “{s.title}” and its results?</span>
+                <button
+                  className="btn-danger"
+                  disabled={deleting === s.id}
+                  onClick={async () => {
+                    setDeleting(s.id);
+                    setDeleteError(null);
+                    try {
+                      await deleteSession(s.id);
+                      setConfirmDelete(null);
+                    } catch (e) {
+                      setDeleteError(
+                        e instanceof Error ? e.message : 'Could not delete that session.',
+                      );
+                    } finally {
+                      setDeleting(null);
+                    }
+                  }}
+                >
+                  {deleting === s.id ? 'Deleting…' : 'Delete forever'}
+                </button>
+                <button
+                  className="btn-ghost"
+                  disabled={deleting === s.id}
+                  onClick={() => {
+                    setConfirmDelete(null);
+                    setDeleteError(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                className="btn-ghost session-delete"
+                aria-label={`Delete session ${s.title}`}
+                onClick={() => {
+                  setConfirmDelete(s.id);
+                  setDeleteError(null);
+                }}
+              >
+                Delete
+              </button>
+            )}
+          </div>
         ))}
         {sessions.length === 0 && (
           <div className="card" style={{ textAlign: 'center', padding: '34px 20px' }}>

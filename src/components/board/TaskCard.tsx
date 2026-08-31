@@ -2,7 +2,8 @@
 // live productivity, drop target for chips.
 
 import { useDroppable } from '@dnd-kit/core';
-import { CHARACTERS, TASK_BY_ID } from '../../engine/content';
+import { BATHROOM_TASK, CHARACTERS, TASK_BY_ID } from '../../engine/content';
+import { bathroomOccupied } from '../../engine/dispatch';
 import {
   contributorCount,
   crewFactor,
@@ -20,10 +21,13 @@ export function TaskCard({ taskId }: { taskId: string }) {
   const selected = useSimStore((s) => s.selected);
   const setSelected = useSimStore((s) => s.setSelected);
   const dispatch = useSimStore((s) => s.dispatch);
+  // Taro is in the bathroom: the engine rejects assignments to it, so don't
+  // offer the drop either.
+  const occupied = !!sim && taskId === BATHROOM_TASK && bathroomOccupied(sim);
   const { isOver, setNodeRef, active } = useDroppable({
     id: `task-${taskId}`,
     data: { taskId },
-    disabled: sim?.tasks[taskId].status !== 'open',
+    disabled: sim?.tasks[taskId].status !== 'open' || occupied,
   });
   if (!sim) return null;
 
@@ -35,7 +39,7 @@ export function TaskCard({ taskId }: { taskId: string }) {
   // so don't offer the drop in the first place.
   const eligible = (c: CharId) => !def.onlyChars || def.onlyChars.includes(c);
   const canReceive =
-    selected !== null && task.status === 'open' && !full && eligible(selected);
+    selected !== null && task.status === 'open' && !full && !occupied && eligible(selected);
   const ownerNames = def.onlyChars?.map((c) => CHARACTERS[c].name).join(' or ');
   const pct = Math.min(100, (task.workDone / task.workRequired) * 100);
   // The crew factor shown must be the one the engine applies, which counts
@@ -53,7 +57,7 @@ export function TaskCard({ taskId }: { taskId: string }) {
   const dragged = active?.data.current?.charId as CharId | undefined;
   const dropClass =
     isOver && active
-      ? full || (dragged && !eligible(dragged))
+      ? full || occupied || (dragged && !eligible(dragged))
         ? 'drop-full'
         : 'drop-ok'
       : '';
@@ -70,7 +74,9 @@ export function TaskCard({ taskId }: { taskId: string }) {
       className={`task-card ${task.status} ${dropClass} ${canReceive ? 'assignable' : ''}`}
       aria-label={`${def.name}, ${task.status === 'done' ? 'done' : `${Math.round(pct)}% complete`}${
         task.reworkCount > 0 ? `, redone ${task.reworkCount} time(s)` : ''
-      }${canReceive ? '. Press Enter to assign the selected friend.' : ''}`}
+      }${occupied ? ', occupied — Taro is in there' : ''}${
+        canReceive ? '. Press Enter to assign the selected friend.' : ''
+      }`}
       role={canReceive ? 'button' : undefined}
       tabIndex={canReceive ? 0 : undefined}
       onClick={assignSelected}
@@ -125,12 +131,15 @@ export function TaskCard({ taskId }: { taskId: string }) {
         {task.assignees.map((c) => (
           <CharacterChip key={c} charId={c} explain={explainMult(sim, c)} />
         ))}
-        {task.status === 'open' && task.assignees.length === 0 && (
+        {task.status === 'open' && task.assignees.length === 0 && !occupied && (
           <span style={{ fontSize: '0.75rem', color: 'var(--ink-soft)' }}>
             drop a friend here
           </span>
         )}
       </div>
+      {occupied && (
+        <div className="task-lockinfo">🚽 Occupied — nobody can clean it while Taro is in there.</div>
+      )}
       {task.status === 'locked' ? (
         <div className="task-lockinfo">Waiting on: {unmet.join(', ')}</div>
       ) : (

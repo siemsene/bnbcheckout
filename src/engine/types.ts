@@ -75,6 +75,7 @@ export type BlockReason =
   | 'walkback'
   | 'oncall'
   | 'distracted'
+  | 'atdoor'
   | 'toilet';
 
 /** One named factor in a character's productivity multiplier. */
@@ -167,6 +168,8 @@ export type Activity =
   | 'working'
   | 'distracted'
   | 'oncall'
+  /** Caught at the side of the house by the neighbour, who wants to chat. */
+  | 'atdoor'
   | 'toilet'
   | 'walkback'; // returning after abandoning a travel task
 
@@ -204,6 +207,49 @@ export interface Plan {
   queues: Record<CharId, string[]>;
   /** Bumped on every edit — the projection's cache key. */
   rev: number;
+  /**
+   * Reserved idle time, in sim-minutes: the gaps a lane already has, held so
+   * that the next job dropped into that lane cannot quietly swallow them and
+   * push everything after them later.
+   *
+   * Derived from the projection rather than drawn by hand — every gap between
+   * two consecutive scheduled jobs becomes one — and dropped again as soon as
+   * the pair it sits between stops being a pair. See `engine/slack.ts`.
+   */
+  slack?: Partial<Record<CharId, SlackWindow[]>>;
+  /**
+   * Jobs the planner has declared fully crewed even though they have room for
+   * more hands. Purely an intent: a two-person job runs perfectly well with one
+   * person on it, just slower, and the engine never reads this. It stops the
+   * board asking for a second person who is never coming.
+   */
+  settled?: string[];
+}
+
+/**
+ * A reserved stretch of one friend's morning, in sim-minutes from 8:00 —
+ * exactly the gap between the job before it and the job it is held for.
+ */
+export interface SlackWindow {
+  from: number;
+  to: number;
+  /**
+   * The job this time is being kept for. It is held against everything ELSE:
+   * the job itself may start the moment it can, so a predecessor landing early
+   * is never punished by the very window that exists to protect it.
+   *
+   * Empty on a buffer the planner placed by hand — that time is held against
+   * every job, which is what makes it a buffer rather than a queue.
+   */
+  forTask: string;
+  /** The job it follows. The pair is what justifies the window's existence. */
+  after: string;
+  /**
+   * Put here on purpose, rather than derived from a gap the schedule already
+   * had. Survives as long as the job it follows is still in that lane, and is
+   * the planner's to remove.
+   */
+  manual?: boolean;
 }
 
 /** What a plan is predicted to do, in the same shapes the charts already read. */

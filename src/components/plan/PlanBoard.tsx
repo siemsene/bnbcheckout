@@ -11,15 +11,11 @@
 // positioning things in space.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CHARACTERS, CHAR_IDS, TASKS, TASK_BY_ID } from '../../engine/content';
 import { checkPlan, emptyPlan } from '../../engine/planCheck';
 import { projectPlan } from '../../engine/project';
-import { eligible } from '../../engine/dispatch';
-import { CHAR_META } from '../../content/charMeta';
-import { GanttChart } from '../charts/GanttChart';
+import { PlanGantt } from './PlanGantt';
 import { NetworkDiagram } from '../charts/NetworkDiagram';
-import { TaskIcon } from '../board/TaskIcon';
-import type { CharId, Plan } from '../../engine/types';
+import type { Plan } from '../../engine/types';
 
 /**
  * The draft plan is held HERE rather than by the session screen. It used to live
@@ -30,7 +26,9 @@ import type { CharId, Plan } from '../../engine/types';
  */
 export function PlanBoard({
   seed,
+  initialPlan,
   onCommit,
+  onDraft,
   committed,
   msUntilStart,
   readyCount,
@@ -38,16 +36,30 @@ export function PlanBoard({
   error,
 }: {
   seed: number;
+  /**
+   * The plan already on the sim, if any. A refresh during planning used to come
+   * back to an empty board even though the checkpoint still held the work.
+   */
+  initialPlan?: Plan;
   onCommit(plan: Plan): void;
+  /**
+   * Every edit, not just the explicit commit. Run 2 is driven by whatever plan
+   * is on the sim when the clock starts, and that used to be set only by "Lock
+   * it in" — so a student who built a plan and never pressed the button watched
+   * their friends stand around doing nothing for the whole replay.
+   */
+  onDraft(plan: Plan): void;
   committed: boolean;
   msUntilStart: number;
   readyCount: number;
   playerCount: number;
   error: string | null;
 }) {
-  const [picked, setPicked] = useState<string | null>(null);
-  const [plan, setPlan] = useState<Plan>(emptyPlan);
-  const onChange = setPlan;
+  const [plan, setPlan] = useState<Plan>(() => initialPlan ?? emptyPlan());
+  const onChange = (next: Plan) => {
+    setPlan(next);
+    onDraft(next);
+  };
 
   const issues = useMemo(() => checkPlan(plan), [plan]);
   const errors = issues.filter((i) => i.level === 'error');
@@ -78,28 +90,8 @@ export function PlanBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed, plan.rev]);
 
-  const edit = (fn: (q: Record<CharId, string[]>) => void) => {
-    const queues = Object.fromEntries(
-      CHAR_IDS.map((c) => [c, [...(plan.queues[c] ?? [])]]),
-    ) as Record<CharId, string[]>;
-    fn(queues);
-    onChange({ queues, rev: plan.rev + 1 });
-  };
 
-  const addTo = (charId: CharId, taskId: string) =>
-    edit((q) => {
-      if (!q[charId].includes(taskId)) q[charId].push(taskId);
-    });
-  const removeFrom = (charId: CharId, i: number) => edit((q) => q[charId].splice(i, 1));
-  const move = (charId: CharId, i: number, by: number) =>
-    edit((q) => {
-      const j = i + by;
-      if (j < 0 || j >= q[charId].length) return;
-      [q[charId][i], q[charId][j]] = [q[charId][j], q[charId][i]];
-    });
 
-  const countOf = (taskId: string) =>
-    CHAR_IDS.filter((c) => (plan.queues[c] ?? []).includes(taskId)).length;
 
   const mins = Math.floor(msUntilStart / 60000);
   const secs = Math.ceil((msUntilStart % 60000) / 1000);
@@ -125,119 +117,15 @@ export function PlanBoard({
           </div>
         </div>
 
-        <div className="plan-grid">
-          {/* ---------------------------------------------------- the palette */}
-          <div className="plan-palette panel">
-            <strong style={{ fontSize: '0.9rem' }}>
-              {picked ? 'Now pick whose list it goes in →' : 'Pick a job'}
-            </strong>
-            <div className="plan-task-list">
-              {TASKS.map((t) => {
-                const n = countOf(t.id);
-                const need = t.minWorkers ?? 1;
-                const short = need > 1 && n < need;
-                return (
-                  <button
-                    key={t.id}
-                    className={`plan-task ${picked === t.id ? 'picked' : ''} ${
-                      n === 0 ? 'unplanned' : ''
-                    }`}
-                    onClick={() => setPicked(picked === t.id ? null : t.id)}
-                    aria-pressed={picked === t.id}
-                  >
-                    <TaskIcon taskId={t.id} />
-                    <span className="plan-task-name">
-                      {t.name}
-                      <em>
-                        ~{t.baseMinutes}′
-                        {need > 1
-                          ? ` · needs all ${need}`
-                          : t.maxWorkers === 1
-                            ? ' · one person'
-                            : ` · up to ${t.maxWorkers}`}
-                        {t.requiresLicense && ' · needs a licence'}
-                        {t.travel && ' · away from the house'}
-                      </em>
-                    </span>
-                    <span className={`plan-count ${short ? 'short' : ''}`}>
-                      {n === 0 ? '—' : `${n}×`}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* ------------------------------------------------------ the lanes */}
-          <div className="plan-lanes">
-            {CHAR_IDS.map((c) => {
-              const q = plan.queues[c] ?? [];
-              const canTake = picked != null && eligible(c, picked) && !q.includes(picked);
-              return (
-                <div
-                  key={c}
-                  className={`plan-lane panel ${canTake ? 'droppable' : ''}`}
-                  style={{ ['--chip-color' as string]: CHAR_META[c].color }}
-                >
-                  <div className="plan-lane-head">
-                    <img src={CHAR_META[c].front} alt="" aria-hidden />
-                    <strong>{CHARACTERS[c].name}</strong>
-                    <span className="plan-lane-count">
-                      {q.length} {q.length === 1 ? 'job' : 'jobs'}
-                    </span>
-                  </div>
-
-                  <ol className="plan-lane-list">
-                    {q.map((taskId, i) => (
-                      <li key={`${taskId}-${i}`}>
-                        <span className="plan-lane-task">{TASK_BY_ID[taskId].name}</span>
-                        <span className="plan-lane-btns">
-                          <button
-                            onClick={() => move(c, i, -1)}
-                            disabled={i === 0}
-                            aria-label={`Move ${TASK_BY_ID[taskId].name} earlier`}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            onClick={() => move(c, i, 1)}
-                            disabled={i === q.length - 1}
-                            aria-label={`Move ${TASK_BY_ID[taskId].name} later`}
-                          >
-                            ↓
-                          </button>
-                          <button
-                            onClick={() => removeFrom(c, i)}
-                            aria-label={`Remove ${TASK_BY_ID[taskId].name} from ${CHARACTERS[c].name}`}
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                    {q.length === 0 && <li className="plan-lane-empty">Nothing planned</li>}
-                  </ol>
-
-                  <button
-                    className="plan-lane-add"
-                    disabled={!canTake}
-                    onClick={() => {
-                      if (picked) addTo(c, picked);
-                    }}
-                  >
-                    {picked
-                      ? canTake
-                        ? `+ ${TASK_BY_ID[picked].name}`
-                        : q.includes(picked)
-                          ? 'already on their list'
-                          : `${CHARACTERS[c].name} can’t do that one`
-                      : '+ add the picked job'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        {/* The board itself: drag jobs into each friend's row. Order is what
+            the engine consumes, so a block snaps to when the job can actually
+            start rather than sitting wherever it was dropped. */}
+        <p className="plan-howto">
+          Drag a job into someone's row. Further right means later in their
+          order — the blocks then snap to when each job can actually start, and
+          a striped stretch is someone waiting on something else to finish.
+        </p>
+        <PlanGantt plan={plan} projection={projection} onChange={onChange} />
 
         {/* ------------------------------------------------------ the verdict */}
         <div className="plan-verdict">
@@ -296,17 +184,6 @@ export function PlanBoard({
             ))}
           </ul>
         )}
-
-        <h3 className="plan-section">What your plan does</h3>
-        <p className="plan-section-note">
-          The same engine that runs the game, with the interruptions switched off.
-          Gaps are people standing idle; the real morning will be worse than this,
-          not better.
-        </p>
-        <GanttChart
-          timeline={projection.timeline}
-          finishSimMinute={projection.finishSimMinute}
-        />
 
         <h3 className="plan-section">What has to happen before what</h3>
         <p className="plan-section-note">

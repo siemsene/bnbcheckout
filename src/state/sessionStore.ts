@@ -82,7 +82,17 @@ interface SessionStore {
    * this the improvement comparison has nothing to compare against, since the
    * sim state itself is about to be thrown away.
    */
-  finishRoundOne(): Promise<void>;
+  /**
+   * Persist the current round's result now.
+   *
+   * The automatic save in `attachReporting` only fires when the ENGINE ends a
+   * run (`sim.outcome !== 'running'`). A run the room ends — the deadline
+   * passing while this client's sim lagged, or the instructor ending the
+   * session — halts through `haltRun`, which sets the store's phase and leaves
+   * `sim.outcome` alone. So nothing was written, and the run-1-vs-run-2
+   * debrief had nothing to read back.
+   */
+  saveRoundResult(): Promise<void>;
 }
 
 let lastProgressAt = 0;
@@ -316,14 +326,35 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
-  async finishRoundOne() {
+  async saveRoundResult() {
     const sim = useSimStore.getState().sim;
-    const { identity, uid } = get();
-    if (!sim || !identity || !uid || sim.round !== 1) return;
+    const { identity } = get();
+    if (!sim || !identity) return;
+    // Do not give up when the uid has not reached the store yet. This runs once,
+    // at the moment a run ends, and the halt that triggers it can land during
+    // boot — silently skipping the only write is how the debrief ended up with
+    // nothing to read. Everything else that writes is periodic and retries.
+    let uid = get().uid;
+    if (!uid) {
+      try {
+        uid = await ensureAnonAuth();
+        set({ uid });
+      } catch {
+        return;
+      }
+    }
     try {
-      await saveResult(identity.sessionId, identity.playerId, uid, summarize(sim), 1);
-    } catch {
-      /* the debrief degrades to run 2 only; never block the transition */
+      await saveResult(
+        identity.sessionId,
+        identity.playerId,
+        uid,
+        summarize(sim),
+        sim.round,
+      );
+    } catch (e) {
+      // Never block a stage transition on this — but do say so. A silently
+      // swallowed failure here is invisible until the debrief turns up empty.
+      console.error('[checkout-rush] could not save the round result', e);
     }
   },
 
@@ -363,3 +394,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 }));
+
+// Dev-only hook, mirroring __simStore: identity and uid are only observable
+// from here, and a room bug is usually a question about one of them.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__sessionStore = useSessionStore;
+}

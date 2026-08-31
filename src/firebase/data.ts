@@ -111,6 +111,15 @@ export function isTwoRun(session: SessionDoc | null): boolean {
   return session?.settings?.format === 'two-run';
 }
 
+/**
+ * Did run 1 ever happen? False when the instructor skipped straight to the plan
+ * board, which leaves `runStartsAt` unstamped — the one durable signal that
+ * there is no first run to save a result for or compare against.
+ */
+export function ranRoundOne(session: SessionDoc | null): boolean {
+  return session?.runStartsAt != null;
+}
+
 /** Wall-clock milliseconds one full run lasts for this session's compression. */
 export function runWindowMs(session: SessionDoc | null): number {
   const deadlineMin = session?.settings?.simDeadlineMin ?? 120;
@@ -278,6 +287,16 @@ export async function loadCheckpoint(
   return snap.exists() ? (snap.data() as Checkpoint) : null;
 }
 
+/**
+ * Results go in as a JSON blob, exactly as checkpoints do.
+ *
+ * Spreading the summary into the document looked tidier but never worked:
+ * `ResultSummary.utilization` is `number[][]`, and Firestore rejects arrays of
+ * arrays outright. Every result write threw, the throw was swallowed by the
+ * caller, and the run-1-vs-run-2 debrief silently had nothing to read back.
+ * Nothing queries inside this document — the rules only check `uid` — so the
+ * blob costs nothing.
+ */
 export async function saveResult(
   sessionId: string,
   playerId: string,
@@ -290,7 +309,7 @@ export async function saveResult(
       db(), 'sessions', sessionId, 'players', playerId,
       'private', privateDoc('result', round),
     ),
-    { ...result, uid, savedAt: serverTimestamp() },
+    { json: JSON.stringify(result), uid, savedAt: serverTimestamp() },
   );
 }
 
@@ -305,7 +324,14 @@ export async function loadResult(
       'private', privateDoc('result', round),
     ),
   );
-  return snap.exists() ? (snap.data() as ResultSummary) : null;
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  if (typeof data.json !== 'string') return null;
+  try {
+    return JSON.parse(data.json) as ResultSummary;
+  } catch {
+    return null;
+  }
 }
 
 // --- instructor -----------------------------------------------------------

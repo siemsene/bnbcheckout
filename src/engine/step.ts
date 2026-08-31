@@ -4,6 +4,7 @@
 
 import {
   BATHROOM_REWORK_FRACTION,
+  BATHROOM_TASK,
   CHARACTERS,
   CHAR_IDS,
   DEFAULT_MULTIWORKER,
@@ -31,7 +32,7 @@ import {
   WALKTHROUGH_SURPRISE_THRESHOLD,
   TICKS_PER_MINUTE,
 } from './content';
-import { planActions } from './dispatch';
+import { bathroomOccupied, planActions } from './dispatch';
 import { pctComplete } from './scoring';
 import type {
   Action,
@@ -108,7 +109,13 @@ function applyAction(
       return;
     }
     if (state.nudge) return; // Sora is already on her way to someone
-    if (target.activity !== 'distracted' && target.activity !== 'oncall') return;
+    if (
+      target.activity !== 'distracted' &&
+      target.activity !== 'oncall' &&
+      target.activity !== 'atdoor'
+    ) {
+      return;
+    }
 
     // Sora walks over, has a word, then walks back to whatever she was doing.
     state.nudge = { target: action.charId, arriveAt: tick + NUDGE_WALK_TICKS };
@@ -134,6 +141,12 @@ function applyAction(
   const task = state.tasks[action.taskId];
   if (!def || !task) return;
   if (task.status !== 'open') return; // locked or done: UI prevents; engine rejects
+  // A room in use cannot be cleaned. Rejected rather than queued: the door is
+  // shut now, and the player should hear why and send them elsewhere.
+  if (action.taskId === BATHROOM_TASK && bathroomOccupied(state)) {
+    bubble(state, events, action.charId, 'bathroom-occupied', true);
+    return;
+  }
   if (task.assignees.length >= def.maxWorkers) return;
   const char = state.chars[action.charId];
   if (char.taskId === action.taskId) return;
@@ -261,8 +274,15 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
         c.activity = 'toilet';
         c.unavailableUntil = tick + ev.duration;
         bubble(state, events, ev.charId, 'toilet-start', true);
+        const bath = state.tasks[BATHROOM_TASK];
+        // Whoever was cleaning it is turned out at the door — including Taro
+        // himself, if he was the one in there with the brush. His activity is
+        // already 'toilet' by now, so removeFromTask leaves it alone.
+        for (const occupant of [...bath.assignees]) {
+          removeFromTask(state, occupant, events);
+          bubble(state, events, occupant, 'bathroom-evicted', true);
+        }
         // The bathroom suffers, whether cleaned already or mid-clean.
-        const bath = state.tasks['clean-bathroom'];
         if (bath.workDone > 0) {
           const wasDone = bath.workDone;
           bath.workDone = Math.max(0, bath.workDone * (1 - BATHROOM_REWORK_FRACTION));
@@ -272,17 +292,20 @@ function fireScheduledEvents(state: SimState, events: SimEvent[]) {
           events.push({
             type: 'rework',
             tick,
-            taskId: 'clean-bathroom',
+            taskId: BATHROOM_TASK,
             textKey: 'rework-bathroom',
           });
-          refreshLocksAfterRework(state, 'clean-bathroom');
+          refreshLocksAfterRework(state, BATHROOM_TASK);
         }
         break;
       }
       case 'doorbell': {
         const c = state.chars[ev.charId];
         if (c.activity === 'toilet' || c.activity === 'oncall') break;
-        c.activity = 'distracted'; // stuck at the door until nudged (or it ends)
+        // Its own activity rather than plain `distracted`: the scene walks them
+        // out to the neighbour, and it cannot do that if being caught at the
+        // door is indistinguishable from watching a bird go past.
+        c.activity = 'atdoor'; // stuck there until nudged (or it ends)
         c.unavailableUntil = tick + Math.min(ev.duration, INTERRUPT_MAX_TICKS);
         bubble(state, events, ev.charId, 'doorbell', true);
         break;
@@ -345,7 +368,11 @@ function resolveNudge(state: SimState, events: SimEvent[]) {
   const n = state.nudge;
   if (!n || state.tick < n.arriveAt) return;
   const target = state.chars[n.target];
-  if (target.activity === 'distracted' || target.activity === 'oncall') {
+  if (
+    target.activity === 'distracted' ||
+    target.activity === 'oncall' ||
+    target.activity === 'atdoor'
+  ) {
     target.activity = target.taskId ? 'working' : 'idle';
     target.unavailableUntil = state.tick;
     bubble(state, events, n.target, `nudged-${n.target}`, true);
@@ -371,6 +398,7 @@ function endExpiredInterruptions(state: SimState) {
     if (
       (c.activity === 'oncall' ||
         c.activity === 'distracted' ||
+        c.activity === 'atdoor' ||
         c.activity === 'toilet' ||
         c.activity === 'walkback') &&
       c.unavailableUntil <= tick
@@ -399,6 +427,7 @@ function segmentKind(state: SimState, charId: CharId): TimelineKind | null {
   switch (c.activity) {
     case 'oncall':
     case 'distracted':
+    case 'atdoor':
     case 'toilet':
       return 'blocked';
     case 'walking':

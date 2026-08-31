@@ -94,6 +94,7 @@ export const ACTIVITY_META: Record<
   working: { icon: '', label: 'working' },
   distracted: { icon: '🐦', label: 'distracted — click to nudge', nudgeable: true },
   oncall: { icon: '📱', label: 'on the phone — click to nudge', nudgeable: true },
+  atdoor: { icon: '🚪', label: 'caught by the neighbour — click to nudge', nudgeable: true },
   toilet: { icon: '🚽', label: 'emergency… give them a minute' },
   walkback: { icon: '↩️', label: 'walking back' },
 };

@@ -23,7 +23,15 @@
 // queue each tick costs nothing at this size and makes rework recoverable, which
 // is rather the point of having rework in a teaching sim.
 
-import { CHARACTERS, CHAR_IDS, TASKS, TASK_BY_ID } from './content';
+import {
+  BATHROOM_TASK,
+  CHARACTERS,
+  CHAR_IDS,
+  TASKS,
+  TASK_BY_ID,
+  TICKS_PER_MINUTE,
+} from './content';
+import { heldForAnother } from './slack';
 import type { Action, CharId, SimState } from './types';
 
 /** Could this character ever do this task, however long they waited? */
@@ -35,10 +43,64 @@ export function eligible(charId: CharId, taskId: string): boolean {
   return true;
 }
 
+/**
+ * Is the bathroom in use right now? Nobody cleans a room Taro is sitting in, so
+ * the task is momentarily untakeable. Distinct from `eligible`, which asks who
+ * could EVER do a task; this asks whether it can be taken *this tick*.
+ */
+export function bathroomOccupied(state: SimState): boolean {
+  return state.chars.taro.activity === 'toilet';
+}
+
+/**
+ * Is this friend's time reserved right now for some job other than this one?
+ * Slack is held FOR the job that follows it, so it never blocks that job — see
+ * `engine/slack.ts` for why that asymmetry is load-bearing.
+ */
+function reserved(state: SimState, charId: CharId, taskId: string): boolean {
+  return heldForAnother(state.plan, charId, taskId, state.tick / TICKS_PER_MINUTE);
+}
+
 /** Free to be given something new: idle, present, and not mid-interruption. */
 function available(state: SimState, charId: CharId): boolean {
   const c = state.chars[charId];
   return !c.taskId && c.activity === 'idle' && c.unavailableUntil <= state.tick;
+}
+
+/**
+ * Is a locked crew job worth standing still for, rather than getting on with
+ * something further down the lane?
+ *
+ * Yes when the thing it waits on is somebody else's job — they are cooking,
+ * and wandering off now means the whole table eats late. No in the two cases
+ * where waiting cannot end:
+ *
+ *   1. The job it waits on is this same friend's OWN later work. Waiting would
+ *      be waiting for themselves; they have to go and do it.
+ *   2. Nobody at all is down to do it. That is a plan still being written, and
+ *      idling all morning over a job nobody will ever start helps no one —
+ *      `checkPlan` says so in words instead.
+ */
+function worthWaitingFor(
+  state: SimState,
+  charId: CharId,
+  taskId: string,
+  indexInQueue: number,
+): boolean {
+  const def = TASK_BY_ID[taskId];
+  const plan = state.plan;
+  if (!def || !plan) return false;
+  // An unmet `predsAny` has no single job to wait on, so never hold for it.
+  if (def.predsAny && !def.predsAny.some((p) => state.tasks[p]?.status === 'done')) {
+    return false;
+  }
+  const queue = plan.queues[charId] ?? [];
+  const unmet = (def.preds ?? []).filter((p) => state.tasks[p]?.status !== 'done');
+  if (unmet.length === 0) return false;
+  return unmet.every((p) => {
+    if (queue.indexOf(p) > indexInQueue) return false; // waiting on themselves
+    return CHAR_IDS.some((c) => (plan.queues[c] ?? []).includes(p));
+  });
 }
 
 /**
@@ -88,7 +150,10 @@ export function planActions(state: SimState): Action[] {
     if (task.status !== 'open') continue;
 
     const pending = CHAR_IDS.filter(
-      (c) => (plan.queues[c] ?? []).includes(def.id) && !task.assignees.includes(c),
+      (c) =>
+        (plan.queues[c] ?? []).includes(def.id) &&
+        !task.assignees.includes(c) &&
+        !reserved(state, c, def.id),
     );
     if (task.assignees.length + pending.length < need) continue; // plan can't do it
     if (!pending.every((c) => available(state, c))) continue; // still assembling
@@ -103,21 +168,36 @@ export function planActions(state: SimState): Action[] {
   for (const charId of CHAR_IDS) {
     if (placed.has(charId) || !available(state, charId)) continue;
 
-    for (const taskId of plan.queues[charId] ?? []) {
+    for (const [index, taskId] of (plan.queues[charId] ?? []).entries()) {
       const task = state.tasks[taskId];
       const def = TASK_BY_ID[taskId];
       if (!task || !def) continue;
-      if (task.status !== 'open') continue; // done or still locked: look further
+      if (task.status === 'done') continue; // nothing to come back for
       if (!eligible(charId, taskId)) continue;
 
       if ((def.minWorkers ?? 1) > 1) {
-        // Their next job needs the whole crew and the crew isn't ready. Wait for
-        // them rather than wandering off, so the barrier can actually close —
-        // unless no plan could ever satisfy it, in which case skip it entirely.
-        if (barrierIsSatisfiable(state, taskId)) break;
+        // A crew job keeps its place in the ORDER, locked or not.
+        //
+        // This check has to come BEFORE the locked test below. It used to sit
+        // after it, so while the cooks were still cooking the job was merely
+        // `locked`, everyone skipped straight past it to whatever they had
+        // queued next, and breakfast — which needs all five at once — was held
+        // up by the very people waiting for it. Ordering a job after the crew
+        // job did nothing, because the order was never consulted.
+        if (
+          barrierIsSatisfiable(state, taskId) &&
+          (task.status === 'open' || worthWaitingFor(state, charId, taskId, index))
+        ) {
+          break; // stand by rather than wander off
+        }
         continue;
       }
 
+      if (task.status !== 'open') continue; // still locked: look further
+      // Taro is in there: skip down the queue rather than queue at the door.
+      if (taskId === BATHROOM_TASK && bathroomOccupied(state)) continue;
+      // This stretch is being kept for a job earlier in their lane.
+      if (reserved(state, charId, taskId)) continue;
       if (!roomOn(taskId)) continue;
       take(charId, taskId);
       break;

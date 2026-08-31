@@ -38,7 +38,6 @@ export interface SceneFx {
 const FX_FOR_KEY: Record<string, SceneFx['kind']> = {
   'cat-visit': 'cat',
   'cat-mess': 'cat',
-  doorbell: 'neighbor',
   'found-shopping-list': 'shopping-list',
   spill: 'spill',
   music: 'music',

@@ -59,6 +59,8 @@ export function SessionMonitor() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, tick] = useState(0);
+  const [confirmSkip, setConfirmSkip] = useState(false);
+  const [confirmFast, setConfirmFast] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => init(), [init]);
@@ -80,17 +82,37 @@ export function SessionMonitor() {
   if (!session || !user) return null;
 
   const stage = stageOf(session, Date.now());
-  const startsAt = session.runStartsAt?.toMillis() ?? null;
+  // Each round counts down to its OWN start instant. This read run 1's
+  // timestamp for every stage, so the plan-board countdown the instructor
+  // projects for run 2 was permanently stuck at 0:00.
+  const round2 = stage === 'plan2' || stage === 'countdown2' || stage === 'running2';
+  const startsAt =
+    (round2 ? session.run2StartsAt : session.runStartsAt)?.toMillis() ?? null;
   const msUntilStart = startsAt == null ? 0 : Math.max(0, startsAt - Date.now());
   const readyCount = players.filter((p) => p.ready === true).length;
   const doneCount = players.filter(playerIsDone).length;
   const planningMinutes =
     session.settings?.planningMinutes ?? DEFAULT_PLANNING_MINUTES;
   const twoRun = isTwoRun(session);
-  const planMinutes = session.settings?.planMinutes ?? 8;
+  const planMinutes = session.settings?.planMinutes ?? 12;
+  // Run 1 is over for the room once everyone has finished, which normally comes
+  // well before its wall-clock window expires. `stageOf` cannot see that — it
+  // derives from one timestamp and never reads the roster, deliberately — so
+  // the instructor's controls have to. Without this the class sat at
+  // "5 of 5 finished" with no way to reach the second run.
+  const everyoneDone = players.length > 0 && doneCount === players.length;
+  const stillPlaying = players.length - doneCount;
+  const canOpenPlan2 = twoRun && (stage === 'review1' || stage === 'running');
 
   async function control(
-    action: 'openPlanning' | 'startNow' | 'end' | 'openPlan2' | 'startNow2',
+    action:
+      | 'openPlanning'
+      | 'startNow'
+      | 'end'
+      | 'openPlan2'
+      | 'startNow2'
+      | 'skipToPlan2',
+    opts: { force?: boolean } = {},
   ) {
     if (action === 'end' && !confirm('End the session for everyone and reveal results?')) {
       return;
@@ -98,7 +120,9 @@ export function SessionMonitor() {
     setBusy(true);
     setError(null);
     try {
-      await sessionControl(session!.id, action);
+      await sessionControl(session!.id, action, opts);
+      setConfirmSkip(false);
+      setConfirmFast(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'That did not work — try again.');
     } finally {
@@ -141,16 +165,76 @@ export function SessionMonitor() {
               Open planning ({planningMinutes} min) →
             </button>
           )}
+          {/* Testing shortcut: try the plan board and the replay without
+              playing the first run first. Confirmed rather than immediate,
+              because in a real class it throws away the half of the format
+              that gives the plan anything to be based on. */}
+          {stage === 'lobby' && twoRun && (
+            confirmFast ? (
+              <span className="monitor-confirm">
+                <span>
+                  Skip run 1 entirely? Students go straight to the plan board,
+                  with no first run to plan from and nothing to compare against.
+                </span>
+                <button
+                  className="btn-big"
+                  disabled={busy}
+                  onClick={() => control('skipToPlan2')}
+                >
+                  Yes, skip to planning
+                </button>
+                <button
+                  className="btn-ghost"
+                  disabled={busy}
+                  onClick={() => setConfirmFast(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                className="btn-ghost"
+                disabled={busy}
+                onClick={() => setConfirmFast(true)}
+              >
+                Skip run 1 → plan board ({planMinutes} min)
+              </button>
+            )
+          )}
           {stage === 'planning' && (
             <button className="btn-big" disabled={busy} onClick={() => control('startNow')}>
               ▶ Start now
               {readyCount < players.length && ` (${players.length - readyCount} not ready)`}
             </button>
           )}
-          {stage === 'review1' && (
+          {canOpenPlan2 && (everyoneDone || stage === 'review1') && (
             <button className="btn-big" disabled={busy} onClick={() => control('openPlan2')}>
               Open the plan board ({planMinutes} min) →
             </button>
+          )}
+          {canOpenPlan2 && !everyoneDone && stage === 'running' && (
+            confirmSkip ? (
+              <span className="monitor-confirm">
+                <span>
+                  Cut {stillPlaying} {stillPlaying === 1 ? 'student' : 'students'} off
+                  mid-run?
+                </span>
+                <button
+                  className="btn-big"
+                  disabled={busy}
+                  onClick={() => control('openPlan2', { force: true })}
+                >
+                  Yes, open it
+                </button>
+                <button className="btn-ghost" disabled={busy} onClick={() => setConfirmSkip(false)}>
+                  Wait
+                </button>
+              </span>
+            ) : (
+              <button className="btn-ghost" disabled={busy} onClick={() => setConfirmSkip(true)}>
+                Open the plan board anyway ({stillPlaying} still playing)
+              </button>
+            )
           )}
           {stage === 'plan2' && (
             <button className="btn-big" disabled={busy} onClick={() => control('startNow2')}>
@@ -163,6 +247,13 @@ export function SessionMonitor() {
         {error && (
           <p style={{ color: 'var(--danger)', margin: 0 }} role="alert">
             {error}
+          </p>
+        )}
+
+        {canOpenPlan2 && everyoneDone && stage === 'running' && (
+          <p style={{ margin: 0, color: 'var(--ink-soft)' }}>
+            Everyone has finished run 1 and is reading their own results. Open
+            the plan board when the room is ready for the replay.
           </p>
         )}
 

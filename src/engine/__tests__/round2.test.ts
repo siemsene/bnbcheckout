@@ -127,12 +127,38 @@ describe('new chaos events', () => {
     const s = createRun(23, { events });
     run(s, 1, [{ type: 'assign', charId: 'hana', taskId: 'clean-bathroom' }]);
     run(s, 300);
-    expect(s.chars.hana.activity).toBe('distracted');
+    // Its own activity, not plain `distracted`: the scene sends her out to the
+    // neighbour, which it cannot do if this looks like watching a bird go past.
+    expect(s.chars.hana.activity).toBe('atdoor');
     run(s, 1, [{ type: 'nudge', charId: 'hana' }]);
     run(s, 45);
     expect(s.chars.hana.activity === 'working' || s.chars.hana.activity === 'walking').toBe(
       true,
     );
+  });
+
+  it('lets the neighbour go on her own once the conversation runs out', () => {
+    const s = createRun(23, {
+      events: [{ at: 200, type: 'doorbell', charId: 'hana', duration: 240 }],
+    });
+    run(s, 1, [{ type: 'assign', charId: 'hana', taskId: 'clean-bathroom' }]);
+    run(s, 250);
+    expect(s.chars.hana.activity).toBe('atdoor');
+    run(s, 300); // past the 4-minute chat, with nobody coming to rescue her
+    expect(s.chars.hana.activity).not.toBe('atdoor');
+  });
+
+  it('counts the doorstep as blocked time on the Gantt, not as work', () => {
+    const s = createRun(23, {
+      events: [{ at: 200, type: 'doorbell', charId: 'hana', duration: 600 }],
+    });
+    run(s, 1, [{ type: 'assign', charId: 'hana', taskId: 'clean-bathroom' }]);
+    run(s, 400);
+    const blocked = s.timeline.filter(
+      (seg) => seg.charId === 'hana' && seg.kind === 'blocked',
+    );
+    expect(blocked.length).toBeGreaterThan(0);
+    expect(s.tasks['clean-bathroom'].workDone).toBeGreaterThan(0); // she did start
   });
 });
 

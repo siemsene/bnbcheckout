@@ -9,7 +9,13 @@ import { useNavigate } from 'react-router-dom';
 import { setSimSpeed, useSimStore } from '../../state/simStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { useRoomStage } from '../../state/useRoomStage';
-import { ensureAnonAuth, loadResult, playerIsDone, stageOf } from '../../firebase/data';
+import {
+  ensureAnonAuth,
+  loadResult,
+  playerIsDone,
+  ranRoundOne,
+  stageOf,
+} from '../../firebase/data';
 import { hashSeed } from '../../engine/rng';
 import type { ResultSummary } from '../../engine/scoring';
 import { projectPlan } from '../../engine/project';
@@ -123,11 +129,45 @@ export function SessionGame() {
     if (room.stage === 'ended') {
       if (s.phase === 'running' || s.phase === 'planning') {
         s.haltRun();
+        void useSessionStore.getState().saveRoundResult();
         useSessionStore.getState().reportNow('done');
       }
       return;
     }
-    if (room.stage === 'review1') return; // results are already showing
+    // The room's window for this round has elapsed. Halt whatever the local sim
+    // believes — the same failure as `review1` below, but at the end of run 2,
+    // which has no stage past `running2` to notice it. Without this a client
+    // that fell behind plays on alone and never reaches its debrief.
+    if (room.runOver) {
+      if (s.phase === 'running' || s.phase === 'planning') {
+        s.haltRun();
+        // Whichever round just ended — the guard that used to sit here meant
+        // run 2's result was never written, so the comparison had one side.
+        void useSessionStore.getState().saveRoundResult();
+        useSessionStore.getState().reportNow('done');
+      }
+      return;
+    }
+
+    // Run 1 is over as far as the room is concerned. Halt the local run so the
+    // debrief actually appears: `showResults` needs the local phase to be
+    // 'done', and nothing was making that happen. The local sim only reaches
+    // its own deadline if it has been ticking in step with the room, so any
+    // client that fell behind — a throttled background tab is enough — sat on
+    // a live board through the whole review, while the instructor's screen
+    // said the class was reading its results. Students then went from playing
+    // run 1 straight to the plan board, skipping the debrief the two-run
+    // format exists to produce.
+    if (room.stage === 'review1') {
+      if (s.phase === 'running' || s.phase === 'planning') {
+        s.haltRun();
+        // Save run 1 here rather than waiting for the plan board: this is the
+        // moment the run ended, and the result is what the debrief reads.
+        void useSessionStore.getState().saveRoundResult();
+        useSessionStore.getState().reportNow('done');
+      }
+      return;
+    }
     if (room.stage === 'planning' || room.stage === 'countdown') {
       if (s.phase === 'lobby') {
         s.beginPlanning();
@@ -140,9 +180,20 @@ export function SessionGame() {
     // effect re-runs on every anchor tick, and re-seeding mid-planning would
     // throw away whatever the student had already dragged into their lanes.
     if (room.stage === 'plan2' || room.stage === 'countdown2') {
+      // The ref is fresh after a refresh, so this used to re-seed a brand new
+      // round-2 sim over the one `resumeFromCheckpoint` had just restored —
+      // taking the student's half-built plan with it. Round 2 already being on
+      // the sim is the durable signal that seeding has happened.
+      const already = useSimStore.getState().sim?.round === 2;
+      if (already) seededRound2.current = true;
       if (!seededRound2.current) {
         seededRound2.current = true;
-        void useSessionStore.getState().finishRoundOne();
+        // Only when there was a run 1. The instructor can skip straight here,
+        // and saving then would write a phantom 0% first run — which the
+        // debrief would faithfully put beside run 2 as if it were played.
+        if (ranRoundOne(room.session)) {
+          void useSessionStore.getState().saveRoundResult();
+        }
         const chaosSeed =
           room.session?.settings?.replayScenario === 'newChaos'
             ? hashSeed(`${id!.seed}:r2`)
@@ -156,6 +207,13 @@ export function SessionGame() {
     }
 
     if (room.stage === 'running2' && room.anchorMs != null) {
+      // The debrief compares against what the plan predicted. Commit normally
+      // records it; if the student never pressed the button, do it here so the
+      // comparison still has its "planned" side.
+      const live = useSimStore.getState().sim;
+      if (live?.plan && !live.plannedProjection) {
+        live.plannedProjection = projectPlan(live.seed, live.plan);
+      }
       if (useSimStore.getState().phase === 'planning') {
         s.setClockAnchor(room.anchorMs);
         s.startClock();
@@ -177,7 +235,7 @@ export function SessionGame() {
         s.setClockAnchor(room.anchorMs);
       }
     }
-  }, [booted, room.stage, room.anchorMs]);
+  }, [booted, room.stage, room.anchorMs, room.runOver, room.round]);
 
   // 3. Checkpoint the staged plan periodically during planning, so a refresh
   //    before the run keeps it (markReady also forces one).
@@ -196,8 +254,11 @@ export function SessionGame() {
   useEffect(() => {
     const id = identity;
     if (!id || room.round !== 2 || phase !== 'done' || run1) return;
+    // Nothing to compare against when run 1 was skipped; the debrief simply
+    // drops its "did planning help?" half.
+    if (!ranRoundOne(room.session)) return;
     void loadResult(id.sessionId, id.playerId, 1).then((r) => r && setRun1(r));
-  }, [identity, room.round, phase, run1]);
+  }, [identity, room.round, phase, run1, room.session]);
 
   if (!booted || !sim) return null;
 
@@ -248,11 +309,20 @@ export function SessionGame() {
       {room.stage === 'plan2' && (
         <PlanBoard
           seed={id.seed}
+          initialPlan={sim.plan}
           committed={ready}
           msUntilStart={room.msUntilStart}
           readyCount={room.readyCount}
           playerCount={room.playerCount}
           error={readyError}
+          onDraft={(draft) => {
+            // Mutate the sim object rather than going through the store: this
+            // fires on every edit, and a store update would re-render the whole
+            // game tree behind the overlay. Nothing reads `plan` until the run
+            // starts, so no render needs to know.
+            const s = useSimStore.getState().sim;
+            if (s) s.plan = draft;
+          }}
           onCommit={(committedPlan) => {
             // Commit before telling the room: markReady forces a checkpoint, and
             // the plan has to already be on the sim when that write happens, or a

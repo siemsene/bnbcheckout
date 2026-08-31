@@ -23,7 +23,7 @@ const CHARACTER_NOTES: { name: string; skills: string; quirks: string }[] = [
     name: 'Taro',
     skills: 'Strong (1.6× heavy tasks). No license.',
     quirks:
-      'Works best alone (0.7× when sharing). 2–3 toilet emergencies per game — each re-dirties the bathroom (50% rework). Cannot be nudged out of one. Once he finishes the pharmacy errand, ~75% of his REMAINING emergencies are skipped — so going early is worth more than going late.',
+      'Works best alone (0.7× when sharing). 2–3 toilet emergencies per game — each re-dirties the bathroom (50% rework) AND closes it: anyone cleaning it is unassigned on the spot, and nobody can be put on it until he is out. Cannot be nudged out of one. Once he finishes the pharmacy errand, ~75% of his REMAINING emergencies are skipped — so going early is worth more than going late.',
   },
   {
     name: 'Hana',
@@ -119,8 +119,8 @@ export function ConstraintPanel() {
       </p>
       <p style={{ fontSize: '0.85rem', color: 'var(--ink-soft)' }}>
         Random events per run: Kenji’s boss calls (~6×) · Mei drifts off (~8×) ·
-        Taro’s emergencies (2–3×, re-dirty the bathroom) · doorbell neighbor
-        traps someone 3–4 min (1–2×) · a cat un-cleans a finished living room
+        Taro’s emergencies (2–3×, re-dirty AND close the bathroom) · doorbell
+        neighbor traps someone 3–4 min (1–2×) · a cat un-cleans a finished living room
         (1×) · a cooking spill adds 3 min of dishes (1×) · the road-trip playlist
         gives everyone +10% for 6 min (1×) · cleaning can uncover forgotten items
         (Hana 65%, others 25%) that force repacking.

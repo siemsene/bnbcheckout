@@ -397,6 +397,126 @@ async function main() {
   const cpInstr = await getDoc(doc(instrCtx.db, ...checkpointPath));
   check("instructor checkpoint read allowed", cpInstr.exists());
 
+  // ---------------------------------------------------------------- Step 8.5
+  console.log("--- Step 8.5: reaching run 2 without waiting out run 1 ---");
+
+  // The reported failure: a two-run session where everyone finishes early left
+  // the instructor with no way to reach run 2, because `openPlan2` insisted on
+  // run 1's full wall-clock window elapsing first. A class that plans well beats
+  // the two-hour morning with real minutes to spare, so that was the norm.
+  const twoRunRes = await createSession({
+    title: "TwoRun",
+    planningMinutes: 1,
+    format: "two-run",
+    planMinutes: 5,
+  });
+  const trId = twoRunRes.data?.sessionId;
+  const trCode = twoRunRes.data?.code;
+  const trRef = doc(instrCtx.db, "sessions", trId);
+  check("two-run format stored", (await getDoc(trRef)).data().settings?.format === "two-run");
+
+  const trCtx = makeCtx("tworun-student");
+  await signInAnonymously(trCtx.auth);
+  const trJoin = await httpsCallable(trCtx.fns, "joinSession")({ code: trCode, name: "Rex" });
+  const trPlayerId = trJoin.data.playerId;
+
+  await control({ sessionId: trId, action: "openPlanning" });
+  await control({ sessionId: trId, action: "startNow" });
+
+  // Run 1 has only just started, and the student is still playing.
+  await expectError(
+    "cannot open the plan board while a student is still running",
+    () => control({ sessionId: trId, action: "openPlan2" }),
+    "failed-precondition"
+  );
+
+  // ...but the instructor may override, because one dead tab must not hold the
+  // whole class in run 1.
+  const forced = await control({ sessionId: trId, action: "openPlan2", force: true });
+  check("instructor can force the plan board open", !!forced.data);
+  check("forcing stamped planOpensAt", !!(await getDoc(trRef)).data().planOpensAt);
+
+  // And the ordinary path: everyone finished, long before the window expires.
+  const tr2Res = await createSession({
+    title: "TwoRun2",
+    planningMinutes: 1,
+    format: "two-run",
+    planMinutes: 5,
+  });
+  const tr2Id = tr2Res.data?.sessionId;
+  const tr2Code = tr2Res.data?.code;
+  const tr2Ctx = makeCtx("tworun2-student");
+  await signInAnonymously(tr2Ctx.auth);
+  const tr2Join = await httpsCallable(tr2Ctx.fns, "joinSession")({ code: tr2Code, name: "Sam" });
+  await control({ sessionId: tr2Id, action: "openPlanning" });
+  await control({ sessionId: tr2Id, action: "startNow" });
+  await updateDoc(
+    doc(tr2Ctx.db, "sessions", tr2Id, "players", tr2Join.data.playerId),
+    { phase: "finished", simMinute: 120, pctComplete: 1, finished: true, score: 900 },
+  );
+  const opened = await control({ sessionId: tr2Id, action: "openPlan2" });
+  check("plan board opens once everyone has finished", !!opened.data);
+  const tr2Doc = (await getDoc(doc(tr2Ctx.db, "sessions", tr2Id))).data();
+  check("run 2 has a start instant to count down to", !!tr2Doc.run2StartsAt);
+  check("ready flags cleared for run 2", tr2Doc.readyCount === 0);
+
+  void trPlayerId;
+
+  // A two-run session that says nothing about the plan board gets the standard
+  // twelve minutes. Long enough to actually plan in, which eight was not.
+  const defaultPlanRes = await createSession({
+    title: "DefaultPlanMinutes",
+    planningMinutes: 1,
+    format: "two-run",
+  });
+  const defaultPlanDoc = (
+    await getDoc(doc(instrCtx.db, "sessions", defaultPlanRes.data?.sessionId))
+  ).data();
+  check(
+    "a two-run session defaults to 12 minutes of planning",
+    defaultPlanDoc.settings?.planMinutes === 12
+  );
+
+  // ---------------------------------------------------------------- Step 8.6
+  console.log("--- Step 8.6: skipping run 1 altogether ---");
+
+  // The testing shortcut: straight from the lobby to the plan board, so the
+  // second half of the format can be tried without playing the first half.
+  const skipRes = await createSession({
+    title: "SkipRun1",
+    planningMinutes: 1,
+    format: "two-run",
+    planMinutes: 5,
+  });
+  const skipId = skipRes.data?.sessionId;
+  const skipRef = doc(instrCtx.db, "sessions", skipId);
+
+  await control({ sessionId: skipId, action: "skipToPlan2" });
+  const skipDoc = (await getDoc(skipRef)).data();
+  check("skipping opens the plan board", !!skipDoc.planOpensAt);
+  check("skipping stamps a run 2 start", !!skipDoc.run2StartsAt);
+  // The load-bearing one: with no `runStartsAt`, `stageOf` never derives a
+  // run-1 stage, so nobody plays a first run and nothing saves a result for it.
+  check("skipping never starts run 1", !skipDoc.runStartsAt);
+  check("skipping leaves the session in planning", skipDoc.status === "planning");
+  check("skipping clears ready flags", skipDoc.readyCount === 0);
+
+  // Twice is a mistake, not a shortcut: the second press would rewind students
+  // already on the board back to a fresh countdown.
+  await expectError(
+    "cannot skip a session that has already started",
+    () => control({ sessionId: skipId, action: "skipToPlan2" }),
+    "failed-precondition"
+  );
+
+  // And it is two-run only — there is no second run to skip to otherwise.
+  const singleRes = await createSession({ title: "SingleSkip", planningMinutes: 1 });
+  await expectError(
+    "cannot skip run 1 in a single-run session",
+    () => control({ sessionId: singleRes.data?.sessionId, action: "skipToPlan2" }),
+    "failed-precondition"
+  );
+
   // ---------------------------------------------------------------- Step 9
   console.log("--- Step 9: ended session ---");
   await updateDoc(doc(instrCtx.db, "sessions", sessionId), { status: "ended" });
@@ -411,6 +531,36 @@ async function main() {
     () => joinLate({ code, name: "LateKid" }),
     "failed-precondition"
   );
+
+  // ---------------------------------------------------------------- Step 10
+  console.log("--- Step 10: deleting a session ---");
+  const deleteAsStudent = httpsCallable(lateCtx.fns, "deleteSession");
+  await expectError(
+    "a student cannot delete a session",
+    () => deleteAsStudent({ sessionId }),
+    "permission-denied"
+  );
+
+  const deleteSession = httpsCallable(instrCtx.fns, "deleteSession");
+  const delRes = await deleteSession({ sessionId });
+  check("instructor deleted their ended session", delRes.data?.deleted === true);
+
+  const goneDoc = await getDoc(doc(instrCtx.db, "sessions", sessionId));
+  check("session doc is gone", !goneDoc.exists());
+
+  // The players subcollection has to go with it, or the run's data outlives the
+  // session that owned it.
+  const leftoverPlayers = await getDocs(
+    collection(instrCtx.db, "sessions", sessionId, "players")
+  );
+  check("players subcollection removed too", leftoverPlayers.empty);
+
+  // The join code is freed, so it can be handed out again.
+  const codeDoc = await getDoc(doc(instrCtx.db, "sessionCodes", code));
+  check("join code released", !codeDoc.exists());
+
+  const delAgain = await deleteSession({ sessionId });
+  check("deleting again is a no-op, not an error", delAgain.data?.alreadyGone === true);
 
   // ---------------------------------------------------------------- Summary
   console.log(`E2E: ${passed} passed, ${failed} failed`);
