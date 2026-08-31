@@ -1,0 +1,18 @@
+{
+  "prompt_user": "Chibi super-deformed miniature version of this exact elderly neighbour lady: big head, small simple body, same silver bun, blue cardigan, cream apron and patterned skirt as the reference, standing in side view turned to the right, chatting cheerfully mid-sentence with one hand raised in a friendly gesture, still holding her potted plant, single character, clean silhouette",
+  "prompt_sent": "Chibi super-deformed miniature version of this exact elderly neighbour lady: big head, small simple body, same silver bun, blue cardigan, cream apron and patterned skirt as the reference, standing in side view turned to the right, chatting cheerfully mid-sentence with one hand raised in a friendly gesture, still holding her potted plant, single character, clean silhouette  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  Isolated on a fully transparent background, no backdrop, no drop shadow, no ground plane.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
+  "kind": "raster",
+  "preset": "ghibli",
+  "references": [
+    "public/assets/scene/neighbor.png",
+    "public/assets/chars/hana-chibi-front.png"
+  ],
+  "alt": "Tiny cartoon version of the neighbour, chatting and holding a potted plant",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-image",
+  "aspect": "1:1",
+  "size": "2K",
+  "file": "neighbor-chibi.png",
+  "bytes": 1590567,
+  "created": "2026-08-31T15:08:14-0500"
+}

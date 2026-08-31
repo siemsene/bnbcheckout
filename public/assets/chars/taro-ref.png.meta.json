@@ -1,17 +1,17 @@
 {
-  "prompt_user": "Full-body character reference of Taro, a big broad-shouldered gentle early-twenties strongman with short black hair and a mustard-yellow t-shirt, khaki shorts, sports sweatband on his wrist, easily carrying a rolled sleeping bag under one arm, slightly worried expression, standing facing the viewer, single character, full body head to shoes",
-  "prompt_sent": "Full-body character reference of Taro, a big broad-shouldered gentle early-twenties strongman with short black hair and a mustard-yellow t-shirt, khaki shorts, sports sweatband on his wrist, easily carrying a rolled sleeping bag under one arm, slightly worried expression, standing facing the viewer, single character, full body head to shoes  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  Isolated on a fully transparent background, no backdrop, no drop shadow, no ground plane.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
+  "prompt_user": "Full-body character reference of Taro, a big broad-shouldered gentle early-twenties strongman, in the same art style as the reference image. He has SHORT SOLID JET-BLACK HAIR \u2014 completely black, no white, no grey, no silver, no blonde, no highlights or streaks of any kind. Mustard-yellow t-shirt, khaki shorts, pink sports sweatband on his wrist, easily carrying a rolled green sleeping bag under one arm, slightly worried expression, standing facing the viewer, single character, full body head to shoes. No colour swatches, no hex codes, no lettering.",
+  "prompt_sent": "Full-body character reference of Taro, a big broad-shouldered gentle early-twenties strongman, in the same art style as the reference image. He has SHORT SOLID JET-BLACK HAIR \u2014 completely black, no white, no grey, no silver, no blonde, no highlights or streaks of any kind. Mustard-yellow t-shirt, khaki shorts, pink sports sweatband on his wrist, easily carrying a rolled green sleeping bag under one arm, slightly worried expression, standing facing the viewer, single character, full body head to shoes. No colour swatches, no hex codes, no lettering.  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  Isolated on a fully transparent background, no backdrop, no drop shadow, no ground plane.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
   "kind": "raster",
   "preset": "ghibli",
   "references": [
-    "public/assets/chars/sora-ref.png"
+    "public/assets/chars/kenji-ref.png"
   ],
-  "alt": "Taro, a big gentle young man in a mustard t-shirt carrying a rolled sleeping bag",
+  "alt": "Character reference: Taro",
   "provider": "gemini",
-  "model": "gemini-3-pro-image",
+  "model": "gemini-3.1-flash-image",
   "aspect": "3:4",
   "size": "2K",
   "file": "taro-ref.png",
-  "bytes": 1952210,
-  "created": "2026-08-24T14:46:14-0500"
+  "bytes": 1570190,
+  "created": "2026-08-30T20:23:49-0500"
 }

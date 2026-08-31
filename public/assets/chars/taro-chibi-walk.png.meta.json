@@ -1,17 +1,18 @@
 {
-  "prompt_user": "Chibi super-deformed miniature version of this exact character walking briskly, side profile facing right, mid-stride with one arm swinging, cheerful and hurried, same outfit hair and colors as the reference, single character, clean silhouette",
-  "prompt_sent": "Chibi super-deformed miniature version of this exact character walking briskly, side profile facing right, mid-stride with one arm swinging, cheerful and hurried, same outfit hair and colors as the reference, single character, clean silhouette  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  Isolated on a fully transparent background, no backdrop, no drop shadow, no ground plane.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
+  "prompt_user": "Chibi super-deformed miniature version of this character walking briskly, side profile facing right, mid-stride with one arm swinging, carrying a rolled green sleeping mat. Framing: the whole figure from the top of the head to both feet, small and centred with generous empty margin, never cropped. HAIR: uniformly solid jet-black, exactly as in the reference images \u2014 no white, no grey, no silver, no blonde, no white highlights or streaks anywhere in the hair. Same orange t-shirt, khaki shorts, pink wristband and dark brown boots as the reference. Single character, clean silhouette, no lettering.",
+  "prompt_sent": "Chibi super-deformed miniature version of this character walking briskly, side profile facing right, mid-stride with one arm swinging, carrying a rolled green sleeping mat. Framing: the whole figure from the top of the head to both feet, small and centred with generous empty margin, never cropped. HAIR: uniformly solid jet-black, exactly as in the reference images \u2014 no white, no grey, no silver, no blonde, no white highlights or streaks anywhere in the hair. Same orange t-shirt, khaki shorts, pink wristband and dark brown boots as the reference. Single character, clean silhouette, no lettering.  Soft painterly Japanese animation style inspired by classic Studio Ghibli films: gentle watercolor-textured shading, warm natural morning light, rounded friendly character proportions with simple expressive faces, clean hand-drawn linework, muted earthy palette with soft greens and warm creams, cozy lived-in domestic detail. No photorealism, no hard gradients, no text or lettering anywhere in the image.  Use only this colour palette: #4A7C59, #F6EFE2, #D9884A, #5B8DB8, #C76B8E, #A98A3F, #33322E.  Checkout Rush game art. Warm, optimistic, storybook. Palette doubles as the UI theme; distinctions never rely on colour alone.  Isolated on a fully transparent background, no backdrop, no drop shadow, no ground plane.  High contrast and clearly readable when projected at a distance. Avoid embedded paragraphs of text.",
   "kind": "raster",
   "preset": "ghibli",
   "references": [
-    "public/assets/chars/taro-ref.png"
+    "public/assets/chars/taro-ref.png",
+    "public/assets/chars/taro-chibi-front.png"
   ],
-  "alt": "Tiny cartoon version of taro walking in side profile",
+  "alt": "Taro walking, side profile",
   "provider": "gemini",
   "model": "gemini-3.1-flash-image",
   "aspect": "1:1",
   "size": "1K",
   "file": "taro-chibi-walk.png",
-  "bytes": 749272,
-  "created": "2026-08-24T14:49:41-0500"
+  "bytes": 271180,
+  "created": "2026-08-30T18:20:06-0500"
 }
