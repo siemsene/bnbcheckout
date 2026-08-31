@@ -825,6 +825,48 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 .feature-grid p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); }
 .feature-icon { font-size: 1.5rem; line-height: 1; margin-bottom: 8px; }
 
+/* Instructor sign-up. Registration used to hide behind the sign-in card, so
+   the landing page states the offer and carries its own primary button. */
+.signup-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 26px;
+  flex-wrap: wrap;
+  margin-top: 26px;
+  padding: 24px 28px;
+  background: #fdf3dd;
+  border: 2px solid var(--accent-warm);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.signup-band > div { flex: 1 1 300px; }
+.signup-band h2 { font-size: 1.35rem; margin-bottom: 6px; }
+.signup-band p { margin: 0; max-width: 56ch; color: var(--ink-soft); font-size: 0.92rem; }
+.signup-band-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.signup-band-cta .btn-big { white-space: nowrap; }
+.signup-band-cta a { color: var(--accent); font-weight: 600; }
+
+/* Solid counterpart to the ghost sign-in link sat beside it in the header. */
+.nav-cta {
+  padding: 8px 16px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+.nav-cta:hover { filter: brightness(1.08); }
+.nav-cta:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
 /* ------------------------------------------------------- classroom staging */
 
 .planning-bar {

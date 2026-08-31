@@ -1,12 +1,17 @@
 // Instructor register / login / pending-approval flow.
 
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../state/authStore';
 import { Logo } from '../../components/brand/Logo';
 
 export function InstructorAuth() {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  // The landing page links here with ?mode=register so its sign-up button
+  // lands on the form itself rather than on sign-in with a link to find.
+  const [params] = useSearchParams();
+  const [mode, setMode] = useState<'login' | 'register'>(
+    params.get('mode') === 'register' ? 'register' : 'login',
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');

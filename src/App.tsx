@@ -10,6 +10,9 @@ import { firebaseEnabled } from './firebase/client';
 import { Shell } from './components/brand/Shell';
 import './styles/theme.css';
 
+// The register form lives behind the sign-in card, so link straight to it.
+const REGISTER_PATH = '/instructor/auth?mode=register';
+
 const FEATURES = [
   {
     icon: '🔗',
@@ -37,9 +40,14 @@ function Landing() {
   return (
     <Shell
       nav={
-        <Link to="/instructor" className="btn-ghost" style={{ padding: '8px 16px', borderRadius: 10, textDecoration: 'none' }}>
-          Instructor sign-in
-        </Link>
+        <>
+          <Link to="/instructor" className="btn-ghost" style={{ padding: '8px 16px', borderRadius: 10, textDecoration: 'none' }}>
+            Instructor sign-in
+          </Link>
+          <Link to={REGISTER_PATH} className="nav-cta">
+            Register as an instructor
+          </Link>
+        </>
       }
     >
       <section className="hero">
@@ -83,6 +91,33 @@ function Landing() {
           </div>
         ))}
       </div>
+
+      <section className="signup-band" aria-labelledby="signup-band-title">
+        <div>
+          <h2 id="signup-band-title">Teaching this term? Run it with your class.</h2>
+          <p>
+            An instructor account lets you open a session, watch every team plan in
+            real time, and keep the Gantt and utilisation charts for the debrief.
+            Register once — we verify your email, then the site admin approves you.
+          </p>
+        </div>
+        <div className="signup-band-cta">
+          <Link to={REGISTER_PATH}>
+            <button className="btn-big" disabled={!firebaseEnabled}>
+              Register as an instructor
+            </button>
+          </Link>
+          {firebaseEnabled ? (
+            <span>
+              Already have an account? <Link to="/instructor">Sign in</Link>
+            </span>
+          ) : (
+            <span role="status">
+              Instructor accounts aren’t configured on this deployment.
+            </span>
+          )}
+        </div>
+      </section>
     </Shell>
   );
 }
