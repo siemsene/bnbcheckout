@@ -1,17 +1,16 @@
 // Confetti burst on finishing checkout. Pure CSS animation, plays ONCE on
-// mount (never loops beside the results text), fully skipped under
-// prefers-reduced-motion. Gentle drift — nowhere near the 3-flashes/sec limit.
+// mount (never loops beside the results text), fully skipped when motion is
+// reduced. Gentle drift — nowhere near the 3-flashes/sec limit.
 
 import { useEffect, useState } from 'react';
+import { useMotionStore } from '../../state/motionStore';
 
 const COLORS = ['#4a7c59', '#d9884a', '#5b8db8', '#c76b8e', '#d9b64a'];
 const PIECES = 60;
 
 export function Celebration() {
   const [gone, setGone] = useState(false);
-  const reduced =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduced = useMotionStore((s) => s.reduced);
 
   useEffect(() => {
     if (reduced) return;

@@ -204,7 +204,9 @@ provider disabled) rather than reporting everything as a bad password.
 
 Keyboard path for every interaction (chips and task cards are focusable;
 click-to-assign works without drag), `prefers-reduced-motion` honored
-everywhere (sprites stop animating, confetti is skipped), color is never the
+everywhere (sprites stop animating, confetti is skipped) with an explicit
+in-app "Animations" toggle in the HUD that lets a player override the OS
+preference in either direction (remembered per browser), color is never the
 only signal (status icons + text badges + aria labels), an aria-live event
 ticker mirrors all speech bubbles, and the celebration stays far below the
 3-flashes-per-second limit.

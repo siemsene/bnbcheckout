@@ -22,13 +22,16 @@ img {
   display: block;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+/* Reduced motion. The choice lives on <html data-motion>, set by
+   src/state/motionStore.ts: it follows the OS prefers-reduced-motion request
+   until the player picks for themselves via the HUD toggle. Every motion
+   gate keys off this attribute rather than the media query so an explicit
+   in-app choice can win over the OS switch. */
+[data-motion='reduced'] *,
+[data-motion='reduced'] *::before,
+[data-motion='reduced'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }

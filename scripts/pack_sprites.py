@@ -238,10 +238,10 @@ def main() -> None:
   to   {{ background-position: -{cols * (cell_w + pad)}px 0; }}
 }}
 
-/* Required: some students get migraines or seizures from looping motion. */
-@media (prefers-reduced-motion: reduce) {{
-  .{cls} {{ animation: none; background-position: 0 0; }}
-}}
+/* Required: some students get migraines or seizures from looping motion.
+   The app mirrors prefers-reduced-motion (plus the in-app override) onto
+   <html data-motion> — see src/state/motionStore.ts. */
+[data-motion='reduced'] .{cls} {{ animation: none; background-position: 0 0; }}
 """
         if rows > 1:
             css = ("/* NOTE: this sheet has multiple rows; the CSS steps() "

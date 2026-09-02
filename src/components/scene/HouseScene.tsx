@@ -5,6 +5,7 @@
 import { CHARACTERS, CHAR_IDS, PLAYER_CHAR, TASK_BY_ID } from '../../engine/content';
 import { ACTIVITY_META, CHAR_HINTS, CHAR_META } from '../../content/charMeta';
 import { ROOM_CLEAN_RECTS, SKILL_ANIM, TASK_TOOLS } from '../../content/taskMeta';
+import { useMotionStore } from '../../state/motionStore';
 import { useSimStore } from '../../state/simStore';
 import type { CharId, RoomId, SimState } from '../../engine/types';
 
@@ -70,11 +71,7 @@ const FX_SPEC: Record<
   music: { glyph: '🎶', alt: 'Music is on — everyone works a little faster', left: 60, top: 72, width: 4 },
 };
 
-const reducedMotion = () =>
-  typeof window !== 'undefined' &&
-  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
-function loadShuttle(sim: SimState, charId: CharId) {
+function loadShuttle(sim: SimState, charId: CharId, reduced: boolean) {
   const c = sim.chars[charId];
   if (!c.taskId || c.activity !== 'working') return null;
   if (c.unavailableUntil > sim.tick) return null;
@@ -83,7 +80,7 @@ function loadShuttle(sim: SimState, charId: CharId) {
 
   // Reduced motion: stand at the car rather than teleporting back and forth.
   const k = Math.max(0, sim.tasks[c.taskId].assignees.indexOf(charId));
-  if (reducedMotion()) return { ...spec.car, x: spec.car.x + k * 4, atCar: true };
+  if (reduced) return { ...spec.car, x: spec.car.x + k * 4, atCar: true };
 
   // One full leg of phase per worker — the out-and-back cycle is two legs, so
   // a pair is always on opposite legs: they pass each other mid-driveway
@@ -112,6 +109,7 @@ export function HouseScene() {
   const bubbles = useSimStore((s) => s.bubbles);
   const sceneFx = useSimStore((s) => s.sceneFx);
   const dispatch = useSimStore((s) => s.dispatch);
+  const reduced = useMotionStore((s) => s.reduced);
   if (!sim) return null;
 
   const done = (taskId: string) => sim.tasks[taskId].status === 'done';
@@ -140,7 +138,7 @@ export function HouseScene() {
       facingHouse[c] = false;
       continue;
     }
-    const trip = loadShuttle(sim, c);
+    const trip = loadShuttle(sim, c, reduced);
     if (trip) {
       positions[c] = { x: trip.x, y: trip.y };
       shuttling[c] = true;

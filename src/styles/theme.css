@@ -130,9 +130,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   0%, 100% { box-shadow: 0 0 0 0 rgba(217, 136, 74, 0.55); }
   50% { box-shadow: 0 0 0 6px rgba(217, 136, 74, 0); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .hud-nudge { animation: none; }
-}
+[data-motion='reduced'] .hud-nudge { animation: none; }
 
 /* ------------------------------------------------------------------- board */
 
@@ -241,9 +239,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   0%, 100% { box-shadow: 0 0 0 0 rgba(217, 136, 74, 0.7); }
   50% { box-shadow: 0 0 0 6px rgba(217, 136, 74, 0); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .chip.attention { animation: none; box-shadow: 0 0 0 3px var(--accent-warm); }
-}
+[data-motion='reduced'] .chip.attention { animation: none; box-shadow: 0 0 0 3px var(--accent-warm); }
 .chip-avatar {
   width: 26px;
   height: 26px;
@@ -415,9 +411,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   from { transform: translate(-50%, -84%) scale(0.8); }
   to { transform: translate(-50%, -100%) scale(1); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .scene-fx { animation: none; }
-}
+[data-motion='reduced'] .scene-fx { animation: none; }
 
 /* The neighbour stands on the same ground line as everyone outside, at the
    width of a character sprite so she reads as one of the cast rather than a
@@ -435,9 +429,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   from { transform: translateY(-92%) translateX(-14px); }
   to { transform: translateY(-92%) translateX(0); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .scene-neighbour { animation: none; }
-}
+[data-motion='reduced'] .scene-neighbour { animation: none; }
 
 .scene-clean {
   position: absolute;
@@ -476,9 +468,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   border: none;
   padding: 0;
 }
-@media (prefers-reduced-motion: reduce) {
-  .scene-char { transition: none; }
-}
+[data-motion='reduced'] .scene-char { transition: none; }
 .scene-char-img {
   width: 56px;
   height: 56px;
@@ -515,9 +505,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   0%, 100% { transform: rotate(-4deg) translateY(0); }
   50% { transform: rotate(4deg) translateY(-3px); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .scene-char .scene-char-img { animation: none !important; }
-}
+[data-motion='reduced'] .scene-char .scene-char-img { animation: none !important; }
 /* One centred row of activity symbols above the head. Previously the tool sat
    at top-left and the status at top-right, so in a shared room each friend's
    symbols hung over the neighbour standing beside them. */
@@ -542,9 +530,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   0%, 100% { transform: rotate(-12deg); }
   50% { transform: rotate(14deg) translateY(-2px); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .scene-char-tool { animation: none; }
-}
+[data-motion='reduced'] .scene-char-tool { animation: none; }
 .scene-char-label {
   font-size: 0.6rem;
   font-weight: 700;
@@ -578,9 +564,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.2); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .scene-char.needs-nudge .scene-char-status { animation: none; }
-}
+[data-motion='reduced'] .scene-char.needs-nudge .scene-char-status { animation: none; }
 
 .bubble {
   position: absolute;
@@ -597,9 +581,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   pointer-events: none;
   transition: top 0.25s ease-out, left 0.25s ease-out;
 }
-@media (prefers-reduced-motion: reduce) {
-  .bubble { transition: none; }
-}
+[data-motion='reduced'] .bubble { transition: none; }
 .bubble::after {
   content: '';
   position: absolute;
@@ -697,10 +679,8 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   transition: transform 0.14s ease, box-shadow 0.14s ease;
 }
 .card-link:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(70, 60, 40, 0.16); }
-@media (prefers-reduced-motion: reduce) {
-  .card-link { transition: none; }
-  .card-link:hover { transform: none; }
-}
+[data-motion='reduced'] .card-link { transition: none; }
+[data-motion='reduced'] .card-link:hover { transform: none; }
 
 .pill {
   display: inline-flex;
@@ -1242,9 +1222,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   line-height: 1.4;
   color: var(--ink-soft);
 }
-@media (prefers-reduced-motion: reduce) {
-  .choice-body { transition: none; }
-}
+[data-motion='reduced'] .choice-body { transition: none; }
 
 /* Minutes: a narrow box with the unit beside it, so the number reads as a
    duration instead of a bare integer in a full-width field. */
@@ -1365,7 +1343,7 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
 .pg-lane.is-over { border-color: var(--accent); background-color: #eef5ef; }
 /* A row that cannot take the job in hand says so before the drop, not after. */
 .pg-lane.is-blocked { border-color: #e0c0b4; background-color: #fbf1ec; opacity: 0.75; }
-@media (prefers-reduced-motion: reduce) { .pg-lane { transition: none; } }
+[data-motion='reduced'] .pg-lane { transition: none; }
 
 .pg-empty {
   position: absolute;

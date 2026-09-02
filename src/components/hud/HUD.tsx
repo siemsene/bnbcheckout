@@ -5,6 +5,7 @@
 import { CHARACTERS, CHAR_IDS, SIM_DEADLINE_TICKS } from '../../engine/content';
 import { ACTIVITY_META } from '../../content/charMeta';
 import { pctComplete } from '../../engine/scoring';
+import { useMotionStore } from '../../state/motionStore';
 import { useSimStore } from '../../state/simStore';
 
 function clockText(tick: number): string {
@@ -21,6 +22,8 @@ export function HUD() {
   const phase = useSimStore((s) => s.phase);
   const pauseAllowed = useSimStore((s) => s.pauseAllowed);
   const setPaused = useSimStore((s) => s.setPaused);
+  const reduced = useMotionStore((s) => s.reduced);
+  const setReduced = useMotionStore((s) => s.setReduced);
   if (!sim) return null;
 
   // Being nudgeable is the one thing in the run that needs the player to DO
@@ -65,6 +68,20 @@ export function HUD() {
           </span>
         </div>
       )}
+      {/* The OS reduced-motion switch is machine-wide and often off for
+          reasons unrelated to motion sensitivity, so the player can override
+          it either way here. Their choice sticks (see motionStore). */}
+      <button
+        onClick={() => setReduced(!reduced)}
+        aria-pressed={!reduced}
+        title={
+          reduced
+            ? 'Turn walking and work animations on'
+            : 'Turn walking and work animations off'
+        }
+      >
+        {reduced ? '✨ Animations off' : '✨ Animations on'}
+      </button>
       {pauseAllowed && phase === 'running' && (
         <button onClick={() => setPaused(!paused)} aria-pressed={paused}>
           {paused ? '▶ Resume' : '⏸ Pause'}
