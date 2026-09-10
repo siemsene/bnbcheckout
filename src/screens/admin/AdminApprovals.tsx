@@ -73,13 +73,14 @@ export function AdminApprovals() {
     <Shell
       tagline="Site admin"
       nav={
-        <Link
-          to="/instructor"
-          className="btn-ghost"
-          style={{ padding: '8px 16px', borderRadius: 10, textDecoration: 'none' }}
-        >
-          My sessions
-        </Link>
+        <>
+          <Link to="/admin/usage" className="btn-ghost nav-link">
+            Usage
+          </Link>
+          <Link to="/instructor" className="btn-ghost nav-link">
+            My sessions
+          </Link>
+        </>
       }
     >
       <div className="page-head">

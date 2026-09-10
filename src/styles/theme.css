@@ -1582,3 +1582,153 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   border-radius: 8px;
   padding: 6px 10px;
 }
+
+/* --- admin usage ------------------------------------------------------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Shell nav links are anchors, so they need the button box spelled out. */
+.nav-link { padding: 8px 16px; border-radius: 10px; text-decoration: none; }
+
+.usage-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.usage-tile {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.usage-tile.is-accent { border-color: var(--accent); background: #f1f7f1; }
+.usage-tile-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+.usage-tile-value {
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.usage-tile-sub { font-size: 0.8rem; color: var(--ink-soft); }
+
+.usage-window {
+  margin: 0 0 22px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.usage-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.usage-region { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
+.usage-region > span { font-weight: 600; }
+.usage-region select {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+}
+.usage-controls-note {
+  flex: 1 1 240px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  max-width: 46ch;
+}
+
+.usage-h2 { font-size: 1.05rem; margin: 0 0 10px; }
+
+/* Wide tables scroll inside their own box rather than the page. */
+.usage-scroll { overflow-x: auto; margin-bottom: 28px; }
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.usage-table th,
+.usage-table td {
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.usage-table thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  background: #fdf7ea;
+}
+.usage-table .n { text-align: right; font-variant-numeric: tabular-nums; }
+.usage-table tbody tr:last-child > * { border-bottom: 0; }
+.usage-table tbody tr.is-open > * { background: #f3f7f2; }
+.usage-name { display: block; font-weight: 600; }
+.usage-sub { display: block; font-size: 0.78rem; color: var(--ink-soft); font-weight: 400; }
+.usage-toggle { padding: 4px 10px; font-size: 0.78rem; white-space: nowrap; }
+
+.usage-detail-row > td { background: #faf6ec; padding: 0; }
+.usage-detail { padding: 14px; display: grid; gap: 12px; }
+.usage-table-inner { font-size: 0.82rem; background: #fff; }
+.usage-table-inner thead th { background: #f5f0e3; }
+
+.usage-idle { display: grid; gap: 8px; margin-bottom: 28px; }
+
+.usage-breakdown summary,
+.usage-assumptions summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.usage-breakdown ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.usage-breakdown li {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto auto;
+  gap: 4px 12px;
+  align-items: baseline;
+  font-size: 0.82rem;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.usage-line-label { font-weight: 600; }
+.usage-line-units { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.usage-line-usd { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.usage-line-why {
+  grid-column: 1 / -1;
+  color: var(--ink-soft);
+  max-width: 70ch;
+}
+
+.usage-assumptions { margin-top: 8px; }
+.usage-assumptions p,
+.usage-assumptions li { font-size: 0.86rem; color: var(--ink-soft); max-width: 74ch; }
+.usage-assumptions ul { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+.usage-assumptions strong { color: var(--ink); }

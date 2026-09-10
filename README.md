@@ -16,7 +16,7 @@ working **in parallel**.
 ```bash
 npm install
 npm run dev          # open http://localhost:5173 → "Practice run"
-npm test             # engine invariants + balance guards (101 tests)
+npm test             # engine invariants, balance guards, cost model (162 tests)
 ```
 
 Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
@@ -29,7 +29,9 @@ Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
 | Simulation engine | `src/engine/` | Pure TS, deterministic: all randomness pre-rolled from a seed at `createRun`; `step()` advances 1 sim-second. Replayable from `(seed, actionLog)`. |
 | Scenario content | `src/engine/content.ts` | 22-task DAG, 5 characters, chaos-event tuning. The instructor constraint panel renders from the same tables. |
 | Game UI | `src/screens/student/` | Board (`@dnd-kit` drag-drop + click-to-assign fallback), painted house scene with sprites, HUD, results & charts. |
-| Firebase | `functions/`, `firestore.rules` | Callables: `joinSession` (name claim/rebind), `createSession`, `markReady`, `sessionControl` (stage transitions), `getServerTime`, `approveInstructor`, `setAdminClaim`; scheduled cleanup; notification email via the SMTP2GO REST API. |
+| Firebase | `functions/`, `firestore.rules` | Callables: `joinSession` (name claim/rebind), `createSession`, `markReady`, `sessionControl` (stage transitions), `getServerTime`, `approveInstructor`, `setAdminClaim`, `usageStats` (admin roll-up); scheduled cleanup; notification email via the SMTP2GO REST API. |
+| Cost model | `src/billing/costModel.ts` | Prices measured document counts against Google's published Firestore rates. Pure and unit-tested; the write cadence it prices is shared with `sessionStore` via `state/cadence.ts` so the two cannot drift. |
+| Usage archive | `usageArchive/{uid}` | Lifetime per-instructor counters, written by `purgeStaleSessions` and `deleteSession` just before a session is destroyed. Stores counts and session *shapes*, never prices, so purged sessions are re-costed by whatever the model says today. |
 | Tests | `src/engine/__tests__`, `rules-tests/` | Engine + balance in Vitest; security rules + full-emulator E2E (auth→approve→join→rejoin) in `rules-tests/`. |
 | Art pipeline | `scripts/`, `public/assets/` | Generated Ghibli-style set (see `*.meta.json` sidecars for prompts/refs). `scripts/strip_checker_bg.py` removes fake checkerboard backgrounds. |
 
@@ -75,6 +77,22 @@ Practice mode works fully offline. Debug helpers: `/play?speed=60` (fast clock),
   on approval). The affiliation shows on each approval card and in the
   notification email. Accounts predating the field show "No affiliation on
   file"; the admin can fill it in inline from `/admin`.
+- `/admin/usage` rolls it all up per instructor: sessions, students, runs,
+  biggest class, and an estimated Blaze cost. The counts are measured; the money
+  is **modelled** (there is no billing API to read) and the page says so.
+  - **Counts are lifetime.** A session is folded into a durable counter at
+    `usageArchive/{uid}` immediately before it is deleted — by the nightly purge
+    or by an instructor tidying their dashboard — so totals keep adding up long
+    after the 30-day window. What cannot survive is the per-student detail:
+    students are anonymous and their records go with the session, which is why
+    "students" counts a repeat attendee once *per session* rather than once.
+  - **Detail is the last 30 days**, and the cost tile says so explicitly.
+    All-time money is quoted at list price: a purged session's date is gone, so
+    which day's free-tier allowance it used is genuinely unknowable.
+  - Worth knowing before a big lecture: reads scale with the **square** of the
+    class, because every student's progress write is delivered to every other
+    student's leaderboard listener. Thirty students is about 88,000 reads a
+    session — two cents. Two hundred is over three million.
 - An approved instructor creates a session (choosing a planning-stage length) →
   projects the 6-letter code from the session monitor.
 - Students open the site, enter code + a made-up name (no account). Same code +

@@ -122,3 +122,90 @@ export async function setAdminClaim(): Promise<void> {
   const fn = httpsCallable<Record<string, never>, void>(fns(), 'setAdminClaim');
   await fn({});
 }
+
+// --- admin usage ----------------------------------------------------------
+
+/** One instructor account, with the reach of their sessions attached. */
+export interface InstructorUsage {
+  uid: string;
+  email: string;
+  displayName: string;
+  affiliation: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAtMs: number | null;
+  /**
+   * Distinct students across all of this instructor's sessions. Lower than the
+   * seat count whenever the same class comes back for a second session, which
+   * is exactly the difference worth seeing.
+   */
+  distinctStudents: number;
+}
+
+/** One session, reduced to the counts the usage screen and cost model need. */
+export interface SessionUsageRow {
+  id: string;
+  title: string;
+  instructorUid: string;
+  createdAtMs: number | null;
+  endedAtMs: number | null;
+  format: 'single' | 'two-run';
+  simDeadlineMin: number;
+  compression: number;
+  /** Player documents — one per student per session. */
+  players: number;
+  distinctStudents: number;
+  runsPlayed: 0 | 1 | 2;
+  finished: number;
+}
+
+/**
+ * One instructor's purged sessions, reduced to counts that outlive them.
+ *
+ * Written by the nightly purge and by deleteSession, just before the session
+ * itself goes. Added to the live sessions, this is what makes the headline
+ * numbers lifetime totals instead of a rolling 30-day window.
+ */
+export interface ArchiveRow {
+  instructorUid: string;
+  sessions: number;
+  /** Student-sessions. Distinct humans cannot survive the purge; see below. */
+  seats: number;
+  runs: number;
+  biggestClass: number;
+  firstSessionAtMs: number | null;
+  lastSessionAtMs: number | null;
+  /**
+   * Session shapes — `players|runs|format|deadlineMin|compression` → count — so
+   * purged sessions can be re-priced by today's cost model rather than one
+   * frozen on the night they were deleted.
+   */
+  sizes: Record<string, number>;
+}
+
+export interface UsageStats {
+  generatedAtMs: number;
+  /**
+   * How long a session stays queryable in full. Past this it survives only as
+   * the counts in `archive`: no title, no per-student detail, and in particular
+   * no distinct-student figure, because the anonymous uids that identified them
+   * are deleted along with the players.
+   */
+  retentionDays: number;
+  /** What producing this answer cost, in billable document reads. */
+  docsRead: number;
+  instructors: InstructorUsage[];
+  /** Sessions still inside the retention window, in full detail. */
+  sessions: SessionUsageRow[];
+  /** Everything already purged, as durable per-instructor counts. */
+  archive: ArchiveRow[];
+}
+
+/**
+ * Admin-only usage roll-up. Returns measured counts only — the money figure is
+ * derived on this side, in `billing/costModel`, so the pricing assumptions stay
+ * readable and testable instead of being buried in a deployed function.
+ */
+export async function usageStats(): Promise<UsageStats> {
+  const fn = httpsCallable<Record<string, never>, UsageStats>(fns(), 'usageStats');
+  return (await fn({})).data;
+}

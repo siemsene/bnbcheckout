@@ -26,10 +26,9 @@ import {
   markReady as markReadyCallable,
 } from '../firebase/callables';
 import { firebaseEnabled } from '../firebase/client';
+import { CHECKPOINT_INTERVAL_MS, PROGRESS_INTERVAL_MS } from './cadence';
 import { useSimStore, type GamePhase } from './simStore';
 
-const PROGRESS_INTERVAL_MS = 10_000;
-const CHECKPOINT_INTERVAL_MS = 60_000;
 const STORAGE_KEY = 'checkout-rush-session';
 
 interface StoredIdentity {

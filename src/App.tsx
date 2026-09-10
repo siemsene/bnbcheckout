@@ -6,6 +6,7 @@ import { InstructorAuth } from './screens/instructor/InstructorAuth';
 import { Dashboard } from './screens/instructor/Dashboard';
 import { SessionMonitor } from './screens/instructor/SessionMonitor';
 import { AdminApprovals } from './screens/admin/AdminApprovals';
+import { AdminUsage } from './screens/admin/AdminUsage';
 import { firebaseEnabled } from './firebase/client';
 import { Shell } from './components/brand/Shell';
 import './styles/theme.css';
@@ -134,6 +135,7 @@ export default function App() {
         <Route path="/instructor" element={<Dashboard />} />
         <Route path="/instructor/session/:sessionId" element={<SessionMonitor />} />
         <Route path="/admin" element={<AdminApprovals />} />
+        <Route path="/admin/usage" element={<AdminUsage />} />
       </Routes>
     </BrowserRouter>
   );

@@ -97,6 +97,14 @@ service cloud.firestore {
       }
     }
 
+    // Lifetime usage counters, written by the purge and by deleteSession.
+    // Closed to clients in both directions: the admin screen reads these
+    // through the usageStats callable, and nothing else has any business
+    // seeing — let alone editing — how much every instructor has used.
+    match /usageArchive/{uid} {
+      allow read, write: if false;
+    }
+
     // Trigger Email extension queue — functions only, never clients.
     match /mail/{id} {
       allow read, write: if false;

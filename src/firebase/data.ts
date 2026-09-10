@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { auth, db } from './client';
+import { runWindowMsFor } from '../state/cadence';
 import type { Checkpoint } from '../engine/serialize';
 import type { ResultSummary } from '../engine/scoring';
 
@@ -122,9 +123,10 @@ export function ranRoundOne(session: SessionDoc | null): boolean {
 
 /** Wall-clock milliseconds one full run lasts for this session's compression. */
 export function runWindowMs(session: SessionDoc | null): number {
-  const deadlineMin = session?.settings?.simDeadlineMin ?? 120;
-  const compression = session?.settings?.compression ?? 8;
-  return ((deadlineMin * 60) / compression) * 1000;
+  return runWindowMsFor(
+    session?.settings?.simDeadlineMin ?? DEFAULT_SIM_DEADLINE_MIN,
+    session?.settings?.compression ?? DEFAULT_COMPRESSION,
+  );
 }
 
 /**

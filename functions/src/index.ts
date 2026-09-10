@@ -29,6 +29,13 @@ const ADMIN_EMAIL = "siemsene@gmail.com";
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
 
+/**
+ * How long a session survives before cleanupSessions purges it. Named because
+ * usageStats reports it: every total that screen shows is a window this many
+ * days wide, not a lifetime figure, and the two must never drift apart.
+ */
+const RETENTION_DAYS = 30;
+
 // --- Notification email (SMTP2GO REST API) ---------------------------------
 //
 // Set once with:  firebase functions:secrets:set SMTP2GO_API_KEY
@@ -842,6 +849,10 @@ export const deleteSession = onCall(async (request) => {
   }
 
   const code = session.code as string | undefined;
+  // Fold the counts into the lifetime archive first — after recursiveDelete
+  // there is nothing left to count. An instructor tidying up their dashboard
+  // must not be able to erase usage history by doing so.
+  await archiveSessionUsage(sessionRef, session);
   // Players, their name tickets and their private checkpoints all hang off the
   // session, so a plain delete would orphan them.
   await db.recursiveDelete(sessionRef);
@@ -873,11 +884,283 @@ function runsAreOver(session: FirebaseFirestore.DocumentData): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// 6. cleanupSessions — daily purge of sessions older than 30 days.
+// 7. Usage reporting: the lifetime archive, and the admin roll-up that reads it.
 // ---------------------------------------------------------------------------
-export const cleanupSessions = onSchedule("every 24 hours", async () => {
+//
+// Deliberately raw: this returns measured document counts and nothing else.
+// The money figure is derived on the client (src/billing/costModel.ts) so the
+// pricing table and its assumptions live in one readable place that a test can
+// pin, rather than being baked into a deployed function nobody can see.
+//
+// Cost of the call itself is reported back as `docsRead`, because this is the
+// one screen where the reader cares that looking costs money too.
+
+/** How many runs of the sim this session actually got through. */
+function runsPlayed(session: DocumentData): 0 | 1 | 2 {
+  const started = (v: unknown) => v instanceof Timestamp;
+  if (!started(session.runStartsAt)) return 0;
+  return session.settings?.format === "two-run" && started(session.run2StartsAt)
+    ? 2
+    : 1;
+}
+
+const millis = (v: unknown): number | null =>
+  v instanceof Timestamp ? v.toMillis() : null;
+
+// ---------------------------------------------------------------------------
+// 7a. Lifetime usage archive.
+// ---------------------------------------------------------------------------
+//
+// `cleanupSessions` deletes sessions after RETENTION_DAYS, which means the live
+// collections can only ever answer "the last 30 days". Anything the admin
+// screen should still know a year from now has to be folded into a durable
+// counter BEFORE the session is deleted — that is all this is.
+//
+// What gets stored is counts and a small histogram of session SHAPES, never a
+// price. Pricing stays on the client (src/billing/costModel.ts) where it can be
+// read and tested: an archive that baked in dollars would freeze whatever the
+// model said on the day of the purge, and quietly disagree with every live
+// session next to it the moment either the model or Google's rates moved.
+//
+// The histogram is keyed by exactly the inputs the cost model takes, so a
+// purged session can be re-priced later as faithfully as a live one.
+
+/** Where a session's shape is recorded so it can be re-priced after deletion. */
+function sizeKey(
+  players: number,
+  runs: number,
+  format: string,
+  deadlineMin: number,
+  compression: number
+): string {
+  return `${players}|${runs}|${format}|${deadlineMin}|${compression}`;
+}
+
+/**
+ * Distinct shapes one instructor's archive will hold before it starts rounding.
+ *
+ * The histogram is bounded by distinct class shapes, not by sessions, so in
+ * practice it stays at a handful of entries forever. This cap only exists so
+ * that a pathological spread — every class a different size — cannot grow the
+ * document without limit. Past it, class sizes round UP to the next multiple of
+ * five, which collapses the key space and keeps the estimate conservative.
+ */
+const MAX_ARCHIVE_SHAPES = 400;
+const SHAPE_ROUNDING = 5;
+
+/** Sessions with no readable owner still cost money; park them somewhere real. */
+const UNATTRIBUTED_UID = "unattributed";
+
+/**
+ * Fold one session's usage into its instructor's lifetime totals, then mark it
+ * archived.
+ *
+ * Both writes land in a single transaction, and the caller deletes the session
+ * afterwards. That ordering is deliberate: if the delete fails, the flag has
+ * already been set, so the next cleanup run deletes the session WITHOUT
+ * counting it twice. Losing a session from the archive would understate the
+ * totals; counting one twice would overstate them, and only the second kind of
+ * error compounds silently every night.
+ */
+async function archiveSessionUsage(
+  sessionRef: FirebaseFirestore.DocumentReference,
+  session: DocumentData
+): Promise<void> {
+  if (session.usageArchived === true) return;
+
+  // Counted here rather than from `playerCount`, which is a live counter the
+  // rules let the join path move and nothing reconciles.
+  const players = await sessionRef.collection("players").count().get();
+  const playerCount = players.data().count;
+
+  const runs = runsPlayed(session);
+  const format = session.settings?.format === "two-run" ? "two-run" : "single";
+  const deadlineMin = (session.settings?.simDeadlineMin as number) ?? 120;
+  const compression = (session.settings?.compression as number) ?? 8;
+  const createdAtMs = millis(session.createdAt);
+  const uid = (session.instructorUid as string) || UNATTRIBUTED_UID;
+
+  const archiveRef = db.collection("usageArchive").doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(archiveRef);
+    const prev = snap.data() ?? {};
+    const sizes: Record<string, number> = { ...(prev.sizes ?? {}) };
+
+    // Round the class size only once the shape map is already large; see
+    // MAX_ARCHIVE_SHAPES. Rounding up never understates the later estimate.
+    const keyed =
+      Object.keys(sizes).length >= MAX_ARCHIVE_SHAPES
+        ? Math.ceil(playerCount / SHAPE_ROUNDING) * SHAPE_ROUNDING
+        : playerCount;
+    const key = sizeKey(keyed, runs, format, deadlineMin, compression);
+    sizes[key] = (sizes[key] ?? 0) + 1;
+
+    const first = prev.firstSessionAtMs as number | null | undefined;
+    const last = prev.lastSessionAtMs as number | null | undefined;
+
+    tx.set(
+      archiveRef,
+      {
+        sessions: (prev.sessions ?? 0) + 1,
+        // Seats, not people: one student who comes back for a second session is
+        // two seats. Distinct humans cannot survive the purge — the anonymous
+        // uids that identified them are deleted with the players.
+        seats: (prev.seats ?? 0) + playerCount,
+        runs: (prev.runs ?? 0) + runs,
+        biggestClass: Math.max((prev.biggestClass ?? 0) as number, playerCount),
+        firstSessionAtMs:
+          createdAtMs == null
+            ? (first ?? null)
+            : Math.min(first ?? createdAtMs, createdAtMs),
+        lastSessionAtMs:
+          createdAtMs == null
+            ? (last ?? null)
+            : Math.max(last ?? createdAtMs, createdAtMs),
+        sizes,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    tx.update(sessionRef, { usageArchived: true });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 7b. usageStats — admin-only roll-up: live sessions plus the lifetime archive.
+// ---------------------------------------------------------------------------
+export const usageStats = onCall(async (request) => {
+  if (request.auth?.token?.admin !== true) {
+    throw new HttpsError("permission-denied", "Admin privileges required.");
+  }
+
+  // One collection-group read instead of one query per session. Unfiltered, so
+  // it needs no composite index.
+  const [userSnap, sessionSnap, playerSnap, archiveSnap] = await Promise.all([
+    db.collection("users").get(),
+    db.collection("sessions").get(),
+    db.collectionGroup("players").get(),
+    db.collection("usageArchive").get(),
+  ]);
+
+  // Group players by their owning session before touching the session list, so
+  // a session with no players still reports zero rather than being skipped.
+  const bySession = new Map<string, DocumentData[]>();
+  for (const doc of playerSnap.docs) {
+    const sid = doc.ref.parent.parent?.id;
+    if (!sid) continue; // not under a session — nothing sane to attribute it to
+    const list = bySession.get(sid);
+    if (list) list.push(doc.data());
+    else bySession.set(sid, [doc.data()]);
+  }
+
+  // Distinct student uids per instructor. A student who plays two of the same
+  // instructor's sessions is one person with two seats, and the difference is
+  // exactly what tells a repeat class from a new one.
+  const uidsByInstructor = new Map<string, Set<string>>();
+
+  const sessions = sessionSnap.docs
+    // A session already folded into the archive but not yet deleted — the purge
+    // crashed between the two writes, and tomorrow's run will finish the job.
+    // Counting it here as well as in the archive is the one way this screen
+    // could overstate itself, so drop it.
+    .filter((doc) => doc.data().usageArchived !== true)
+    .map((doc) => {
+      const s = doc.data();
+      const players = bySession.get(doc.id) ?? [];
+      const instructorUid = (s.instructorUid as string) ?? "";
+
+      const uids = new Set<string>();
+      for (const p of players) {
+        if (typeof p.uid === "string" && p.uid) uids.add(p.uid);
+      }
+      if (instructorUid) {
+        const seen = uidsByInstructor.get(instructorUid) ?? new Set<string>();
+        for (const uid of uids) seen.add(uid);
+        uidsByInstructor.set(instructorUid, seen);
+      }
+
+      return {
+        id: doc.id,
+        title: (s.title as string) ?? "(untitled)",
+        instructorUid,
+        createdAtMs: millis(s.createdAt),
+        endedAtMs: millis(s.endedAt),
+        format: s.settings?.format === "two-run" ? "two-run" : "single",
+        simDeadlineMin: (s.settings?.simDeadlineMin as number) ?? 120,
+        compression: (s.settings?.compression as number) ?? 8,
+        players: players.length,
+        distinctStudents: uids.size,
+        runsPlayed: runsPlayed(s),
+        finished: players.filter((p) => p.finished === true).length,
+      };
+    });
+
+  const instructors = userSnap.docs.map((doc) => {
+    const u = doc.data();
+    return {
+      uid: doc.id,
+      email: (u.email as string) ?? "",
+      displayName: (u.displayName as string) ?? "(no name)",
+      affiliation: (u.affiliation as string) ?? null,
+      status: (u.status as string) ?? "pending",
+      createdAtMs: millis(u.createdAt),
+      /** Distinct humans across every session this instructor has run. */
+      distinctStudents: uidsByInstructor.get(doc.id)?.size ?? 0,
+    };
+  });
+
+  // Sessions the purge has already taken, folded into per-instructor totals.
+  // Added to the live sessions above, these are what make the headline counts
+  // lifetime figures rather than a rolling 30-day window.
+  const archive = archiveSnap.docs.map((doc) => {
+    const a = doc.data();
+    return {
+      instructorUid: doc.id,
+      sessions: (a.sessions as number) ?? 0,
+      seats: (a.seats as number) ?? 0,
+      runs: (a.runs as number) ?? 0,
+      biggestClass: (a.biggestClass as number) ?? 0,
+      firstSessionAtMs: (a.firstSessionAtMs as number | null) ?? null,
+      lastSessionAtMs: (a.lastSessionAtMs as number | null) ?? null,
+      // Session shapes, so the client can re-price purged sessions with the
+      // model it is running today rather than one frozen at purge time.
+      sizes: (a.sizes as Record<string, number>) ?? {},
+    };
+  });
+
+  return {
+    generatedAtMs: Date.now(),
+    // How long a session stays queryable in full. Past this it survives only as
+    // the counts in `archive` — no titles, no per-student detail.
+    retentionDays: RETENTION_DAYS,
+    // What answering this question cost, in billable reads.
+    docsRead:
+      userSnap.size + sessionSnap.size + playerSnap.size + archiveSnap.size,
+    instructors,
+    sessions,
+    archive,
+  };
+});
+
+// ---------------------------------------------------------------------------
+// 8. cleanupSessions — daily purge of sessions older than RETENTION_DAYS.
+// ---------------------------------------------------------------------------
+/**
+ * The purge itself, split out from its schedule so it can be invoked directly.
+ *
+ * A scheduled function is not reachable over HTTP in the emulator, which made
+ * this — the one code path that permanently destroys data, and the one that
+ * has to archive it first — the only path with no way to exercise it short of
+ * waiting a day in production. Now a test can just call it.
+ */
+export async function purgeStaleSessions(): Promise<{
+  archived: number;
+  deleted: number;
+  skipped: number;
+}> {
   const cutoff = Timestamp.fromMillis(
-    Date.now() - 30 * 24 * 60 * 60 * 1000
+    Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
   );
 
   const stale = await db
@@ -885,13 +1168,40 @@ export const cleanupSessions = onSchedule("every 24 hours", async () => {
     .where("createdAt", "<", cutoff)
     .get();
 
+  let archived = 0;
+  let deleted = 0;
+  let skipped = 0;
+
   for (const doc of stale.docs) {
-    const code = doc.data().code as string | undefined;
+    const data = doc.data();
+    const code = data.code as string | undefined;
+    // One session failing to archive must not stop the purge, and must not stop
+    // the sessions after it either — but it also must not be deleted, or its
+    // usage is lost for good. Skip it and let tomorrow's run retry.
+    try {
+      await archiveSessionUsage(doc.ref, data);
+      archived++;
+    } catch (err) {
+      logger.error("could not archive session usage; leaving it in place", {
+        sessionId: doc.id,
+        err: String(err),
+      });
+      skipped++;
+      continue;
+    }
     await db.recursiveDelete(doc.ref);
     if (code) {
       await db.collection("sessionCodes").doc(code).delete();
     }
+    deleted++;
   }
+
+  logger.info("purge complete", { archived, deleted, skipped });
+  return { archived, deleted, skipped };
+}
+
+export const cleanupSessions = onSchedule("every 24 hours", async () => {
+  await purgeStaleSessions();
 });
 
 // ---------------------------------------------------------------------------
