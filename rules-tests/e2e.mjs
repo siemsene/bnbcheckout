@@ -432,9 +432,40 @@ async function main() {
 
   // ...but the instructor may override, because one dead tab must not hold the
   // whole class in run 1.
+  // Give the student a run-1 row that looks mid-morning, the way a dead tab
+  // leaves it. Nothing on the client will ever advance this.
+  const trPlayerRef = doc(trCtx.db, "sessions", trId, "players", trPlayerId);
+  await updateDoc(trPlayerRef, {
+    phase: "running", simMinute: 87, pctComplete: 0.6, utilizationAvg: 0.5,
+    score: 5400,
+  });
+
   const forced = await control({ sessionId: trId, action: "openPlan2", force: true });
   check("instructor can force the plan board open", !!forced.data);
   check("forcing stamped planOpensAt", !!(await getDoc(trRef)).data().planOpensAt);
+
+  // The reported ghost: a student cut off mid-run stayed "playing (87′)" on
+  // the leaderboard for the rest of the session. Opening the board must move
+  // every row to round-2 planning, with run 1 archived where it stood.
+  const cutOff = (await getDoc(trPlayerRef)).data();
+  check("cut-off student moved to round 2", cutOff.round === 2);
+  check("cut-off student is planning, not still playing", cutOff.phase === "planning");
+  check("cut-off student's live fields reset",
+    cutOff.simMinute === 0 && cutOff.score === 0 && cutOff.pctComplete === 0
+      && cutOff.finished === false && cutOff.ready === false);
+  check("run 1 archived as it stood",
+    cutOff.run1?.phase === "running" && cutOff.run1?.simMinute === 87
+      && cutOff.run1?.score === 5400 && cutOff.run1?.closedByInstructor === true);
+
+  // A stale run-1 progress write still in flight from that tab must bounce off
+  // the reset rather than resurrect the ghost; round-2 progress goes through.
+  await expectError(
+    "stale run-1 progress write is refused after the reset",
+    () => updateDoc(trPlayerRef, { round: 1, phase: "running", simMinute: 90 }),
+    "permission-denied"
+  );
+  await updateDoc(trPlayerRef, { round: 2, phase: "planning", simMinute: 0 });
+  check("round-2 progress write goes through", true);
 
   // And the ordinary path: everyone finished, long before the window expires.
   const tr2Res = await createSession({
@@ -459,8 +490,14 @@ async function main() {
   const tr2Doc = (await getDoc(doc(tr2Ctx.db, "sessions", tr2Id))).data();
   check("run 2 has a start instant to count down to", !!tr2Doc.run2StartsAt);
   check("ready flags cleared for run 2", tr2Doc.readyCount === 0);
-
-  void trPlayerId;
+  const tr2Player = (
+    await getDoc(doc(tr2Ctx.db, "sessions", tr2Id, "players", tr2Join.data.playerId))
+  ).data();
+  check("finished student also moved to round-2 planning",
+    tr2Player.round === 2 && tr2Player.phase === "planning" && tr2Player.score === 0);
+  check("finished student's run 1 archived as played out",
+    tr2Player.run1?.finished === true && tr2Player.run1?.score === 900
+      && tr2Player.run1?.closedByInstructor === false);
 
   // A two-run session that says nothing about the plan board gets the standard
   // twelve minutes. Long enough to actually plan in, which eight was not.

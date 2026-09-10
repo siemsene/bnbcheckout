@@ -192,6 +192,10 @@ export function SessionGame() {
         // and saving then would write a phantom 0% first run — which the
         // debrief would faithfully put beside run 2 as if it were played.
         if (ranRoundOne(room.session)) {
+          // The instructor may have opened the board while this run was still
+          // going. Halt first, as `review1` does, so the saved result has a
+          // settled outcome rather than a run frozen mid-morning.
+          if (s.phase === 'running') s.haltRun();
           void useSessionStore.getState().saveRoundResult();
         }
         const chaosSeed =

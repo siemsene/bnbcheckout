@@ -90,6 +90,10 @@ function phaseLabel(p: PlayerDoc): string {
       return 'planning';
     case 'running':
       return `playing (${p.simMinute}′)`;
+    // `phase: 'finished'` with `finished: false` is a run that ended on the
+    // clock, not on the last task.
+    case 'finished':
+      return '⏰ out of time';
     default:
       return p.phase;
   }

@@ -1327,8 +1327,30 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   padding-left: 6px;
   min-width: 0;
 }
-.pg-row-label img { width: 26px; height: 26px; object-fit: contain; }
-.pg-row-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-row-name img { width: 26px; height: 26px; object-fit: contain; }
+/* Scoped to the name itself: the friend's card is a span too, and sat inside
+   this label — a looser selector clipped every line of it to one row. */
+.pg-row-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The name is a button so the friend's card opens on hover, tap, or Tab —
+   the plan overlay covers the roster chips that carry it in run 1. Unstyled:
+   it should read as a label, with only the cursor and focus ring giving it
+   away. */
+.pg-row-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: help;
+  border-radius: 6px;
+}
+.pg-row-name:hover { background: none; filter: none; }
+.pg-row-name:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 .pg-lane {
   position: relative;

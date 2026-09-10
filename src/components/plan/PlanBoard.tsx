@@ -105,6 +105,7 @@ export function PlanBoard({
             <p style={{ margin: '4px 0 0', color: 'var(--ink-soft)' }}>
               You have met the team and found the constraints the hard way. Now
               decide who does what, in what order — then watch it play out.
+              Hover or tap a name to see again what each friend is good at.
             </p>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -124,6 +125,7 @@ export function PlanBoard({
           Drag a job into someone's row. Further right means later in their
           order — the blocks then snap to when each job can actually start, and
           a striped stretch is someone waiting on something else to finish.
+          Each name is a card: their strengths, and where they get stuck.
         </p>
         <PlanGantt plan={plan} projection={projection} onChange={onChange} />
 

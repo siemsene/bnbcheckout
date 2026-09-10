@@ -83,9 +83,28 @@ export interface PlayerDoc {
   round?: 1 | 2;
   /** Set only by the markReady callable; clients are blocked by rules. */
   ready?: boolean;
+  /**
+   * Round 1 as it stood when the instructor opened the plan board. Written by
+   * sessionControl's openPlan2, which moves every row to round 2 in place;
+   * `closedByInstructor` marks a run that was cut off rather than played out.
+   */
+  run1?: {
+    phase: PlayerDoc['phase'];
+    simMinute: number;
+    pctComplete: number;
+    utilizationAvg: number;
+    finished: boolean;
+    finishSimMinute: number | null;
+    score: number;
+    closedByInstructor: boolean;
+  };
 }
 
 export const DEFAULT_PLANNING_MINUTES = 5;
+
+/** Session settings as createSession writes them; the fallbacks for old docs. */
+export const DEFAULT_SIM_DEADLINE_MIN = 120;
+export const DEFAULT_COMPRESSION = 8;
 
 /** "Starting in 5… 4… 3…" window before the run, mirrored in functions. */
 export const COUNTDOWN_MS = 5_000;

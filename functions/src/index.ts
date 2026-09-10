@@ -135,6 +135,62 @@ function requireTwoRun(session: FirebaseFirestore.DocumentData): void {
     );
   }
 }
+
+/**
+ * Move one player's summary row to round-2 planning.
+ *
+ * There is a single player doc per student, mutated in place across both runs,
+ * and only that student's own client ever advances it. So a tab that died or
+ * was throttled during run 1 used to sit on the leaderboard as
+ * "playing (87′)" for the rest of the session — a ghost that also kept
+ * `everyoneFinished` false and held the finished students in the waiting
+ * room. Opening the plan board is the room moving on, so the server moves
+ * every row with it. Round 1 is archived as it stands under `run1`, which is
+ * what "their first run counts as finished" means for a student whose own
+ * client never got to write a result.
+ *
+ * `round: 2` is load-bearing beyond display: the rules only let simMinute
+ * rewind when the round goes up, and they refuse a write whose round goes
+ * down — so a stale run-1 progress write still in flight from a live tab
+ * bounces off the reset instead of overwriting it.
+ */
+function moveToRun2Planning(
+  tx: FirebaseFirestore.Transaction,
+  p: FirebaseFirestore.QueryDocumentSnapshot,
+  archiveRun1: boolean
+): void {
+  const d = p.data();
+  const reset: Record<string, unknown> = {
+    round: 2,
+    phase: "planning",
+    simMinute: 0,
+    pctComplete: 0,
+    utilizationAvg: 0,
+    finished: false,
+    finishSimMinute: null,
+    score: 0,
+    // Clearing `ready` is load-bearing. Rules make it function-only, so if it
+    // is not reset here every student is still flagged ready from run 1 and
+    // markReady starts run 2 the instant the board opens.
+    ready: false,
+  };
+  // A row already on round 2 belongs to a client that raced ahead of this
+  // transaction; its round-1 summary is gone from the live fields, so there
+  // is nothing truthful left to archive over whatever it has.
+  if (archiveRun1 && (d.round ?? 1) === 1) {
+    reset.run1 = {
+      phase: d.phase ?? "lobby",
+      simMinute: d.simMinute ?? 0,
+      pctComplete: d.pctComplete ?? 0,
+      utilizationAvg: d.utilizationAvg ?? 0,
+      finished: d.finished === true,
+      finishSimMinute: d.finishSimMinute ?? null,
+      score: d.score ?? 0,
+      closedByInstructor: d.phase !== "finished" && d.phase !== "abandoned",
+    };
+  }
+  tx.update(p.ref, reset);
+}
 /**
  * Milliseconds of "starting in 5… 4… 3…" between a start trigger and the run.
  * Generous enough to cover a cold callable round-trip, so the student who
@@ -750,10 +806,9 @@ export const sessionControl = onCall(async (request) => {
           "Run 1 is still going. Wait for everyone to finish, or open it anyway."
         );
       }
-      // Clearing `ready` is load-bearing. Rules make it function-only, so if it
-      // is not reset here every student is still flagged ready from run 1 and
-      // markReady starts run 2 the instant the board opens.
-      for (const p of playerDocs) tx.update(p.ref, { ready: false });
+      // Everyone moves to round 2 here, finished or not: the students whose
+      // tabs are gone would otherwise haunt the leaderboard as still playing.
+      for (const p of playerDocs) moveToRun2Planning(tx, p, true);
       tx.update(sessionRef, {
         planOpensAt: Timestamp.fromMillis(now),
         run2StartsAt: Timestamp.fromMillis(now + planMinutes(session) * 60_000),
@@ -774,9 +829,8 @@ export const sessionControl = onCall(async (request) => {
         );
       }
       status = "planning";
-      // Same reason as openPlan2: `ready` is function-only, so a stale flag
-      // from the lobby would start run 2 the instant the board opened.
-      for (const p of playerDocs) tx.update(p.ref, {ready: false});
+      // Same reset as openPlan2, minus the archive: there was no run 1 to keep.
+      for (const p of playerDocs) moveToRun2Planning(tx, p, false);
       tx.update(sessionRef, {
         status: "planning",
         planOpensAt: Timestamp.fromMillis(now),

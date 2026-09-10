@@ -2,12 +2,12 @@
 // live breakdown of why they are working at the speed they are) and a
 // productivity badge.
 
-import { useCallback, useRef, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { CHARACTERS, TASK_BY_ID } from '../../engine/content';
-import { ACTIVITY_META, CHAR_HINTS, CHAR_META } from '../../content/charMeta';
+import { ACTIVITY_META, CHAR_META } from '../../content/charMeta';
 import { useSimStore } from '../../state/simStore';
+import { CharHintCard, useHoverCard } from './CharHintCard';
 import type { BlockReason, CharId, MultExplain } from '../../engine/types';
 
 /**
@@ -47,7 +47,6 @@ export function CharacterChip({
   const setSelected = useSimStore((s) => s.setSelected);
   const meta = CHAR_META[charId];
   const act = ACTIVITY_META[activity];
-  const hints = CHAR_HINTS[charId];
   const isSelected = selected === charId;
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -55,27 +54,7 @@ export function CharacterChip({
     data: { charId },
   });
 
-  // The card is positioned fixed, from measured coordinates, because the board
-  // it sits in scrolls (`overflow-y: auto`) and an absolutely positioned card
-  // was clipped by it — which is why the productivity breakdown was cut off.
-  const wrapRef = useRef<HTMLSpanElement>(null);
-  const [cardPos, setCardPos] = useState<React.CSSProperties | null>(null);
-  const openCard = useCallback(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const width = 260;
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
-    const below = window.innerHeight - r.bottom;
-    // Flipping via `bottom` rather than `top` means the card's height never has
-    // to be known in advance.
-    setCardPos(
-      below < 260 && r.top > below
-        ? { left, bottom: window.innerHeight - r.top + 6 }
-        : { left, top: r.bottom + 6 },
-    );
-  }, []);
-  const closeCard = useCallback(() => setCardPos(null), []);
+  const { wrapRef, cardPos, openCard, closeCard } = useHoverCard<HTMLSpanElement>();
 
   const blocked = explain && 'blocked' in explain ? explain.blocked : null;
   const terms = explain && 'terms' in explain ? explain.terms : null;
@@ -161,20 +140,7 @@ export function CharacterChip({
         </span>
       </button>
       {cardPos && !isDragging && (
-      <span className="chip-card" role="tooltip" style={cardPos}>
-        <strong>{CHARACTERS[charId].name}</strong>
-        <em>{CHARACTERS[charId].intro}</em>
-        <span className="chip-card-list">
-          {hints.strengths.map((h) => (
-            <span key={h}>＋ {h}</span>
-          ))}
-          {hints.watchouts.map((h) => (
-            <span key={h} className="watchout">
-              − {h}
-            </span>
-          ))}
-        </span>
-
+      <CharHintCard charId={charId} style={cardPos}>
         {/* The live half: exactly the factors the engine is multiplying. */}
         {(blocked || terms) && taskId && (
           <span className="chip-breakdown">
@@ -210,7 +176,7 @@ export function CharacterChip({
             )}
           </span>
         )}
-      </span>
+      </CharHintCard>
       )}
     </span>
   );
