@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   getDoc,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -218,26 +219,48 @@ export async function ensureAnonAuth(): Promise<string> {
   return cred.user.uid;
 }
 
+// Both listeners take an error callback: a denied or failed listener never
+// retries, and without one the screen just sits on its last state with
+// nothing logged.
 export function subscribeSession(
   sessionId: string,
-  cb: (s: SessionDoc | null) => void,
+  cb: (s: SessionDoc | null, fromServer: boolean) => void,
+  onError?: (e: Error) => void,
 ): Unsubscribe {
-  return onSnapshot(doc(db(), 'sessions', sessionId), (snap) => {
-    cb(snap.exists() ? ({ id: snap.id, ...snap.data() } as SessionDoc) : null);
-  });
+  return onSnapshot(
+    doc(db(), 'sessions', sessionId),
+    (snap) => {
+      cb(
+        snap.exists() ? ({ id: snap.id, ...snap.data() } as SessionDoc) : null,
+        !snap.metadata.fromCache,
+      );
+    },
+    (e) => {
+      console.error('[checkout-rush] session listener failed', e);
+      onError?.(e);
+    },
+  );
 }
 
 export function subscribePlayers(
   sessionId: string,
   cb: (players: PlayerDoc[]) => void,
+  onError?: (e: Error) => void,
 ): Unsubscribe {
   const q = query(
     collection(db(), 'sessions', sessionId, 'players'),
     orderBy('score', 'desc'),
   );
-  return onSnapshot(q, (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PlayerDoc));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PlayerDoc));
+    },
+    (e) => {
+      console.error('[checkout-rush] roster listener failed', e);
+      onError?.(e);
+    },
+  );
 }
 
 export interface ProgressUpdate {
@@ -357,14 +380,34 @@ export async function loadResult(
 
 // --- instructor -----------------------------------------------------------
 
+/** How many of an instructor's sessions the dashboard lists. */
+export const MY_SESSIONS_LIMIT = 30;
+
 export function subscribeMySessions(
   uid: string,
   cb: (sessions: SessionDoc[]) => void,
+  onError?: (e: Error) => void,
 ): Unsubscribe {
-  const q = query(collection(db(), 'sessions'), where('instructorUid', '==', uid));
-  return onSnapshot(q, (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SessionDoc));
-  });
+  // Bounded: the dashboard only shows recent sessions, and an unbounded
+  // listener re-read every session the instructor had ever run on each load.
+  // Equality + orderBy on another field needs the composite index declared in
+  // firestore.indexes.json.
+  const q = query(
+    collection(db(), 'sessions'),
+    where('instructorUid', '==', uid),
+    orderBy('createdAt', 'desc'),
+    limit(MY_SESSIONS_LIMIT),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SessionDoc));
+    },
+    (e) => {
+      console.error('[checkout-rush] sessions listener failed', e);
+      onError?.(e);
+    },
+  );
 }
 
 export async function setSessionStatus(

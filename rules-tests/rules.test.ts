@@ -8,7 +8,16 @@ import {
   assertFails,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, collection } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+} from "firebase/firestore";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -239,6 +248,37 @@ describe("players/{pid}", () => {
     const db = testEnv.authenticatedContext(STUDENT).firestore();
     await assertSucceeds(
       updateDoc(doc(db, "sessions", SID, "players", LEGACY_PID), playerUpdate())
+    );
+  });
+
+  it("owner cannot add arbitrary fields to their player doc", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID, "players", PID), playerUpdate({ blob: "x" }))
+    );
+  });
+
+  it("an out-of-range pctComplete is rejected", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID, "players", PID), playerUpdate({ pctComplete: 5 }))
+    );
+  });
+
+  it("a non-numeric score is rejected", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertFails(
+      updateDoc(doc(db, "sessions", SID, "players", PID), playerUpdate({ score: "999" }))
+    );
+  });
+
+  it("a full progress write (as the client sends it) is allowed", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertSucceeds(
+      updateDoc(
+        doc(db, "sessions", SID, "players", PID),
+        playerUpdate({ round: 1, finished: false, finishSimMinute: null, score: 120 })
+      )
     );
   });
 
@@ -594,12 +634,84 @@ describe("players/{pid}/private/{doc}", () => {
     );
   });
 
-  it("instructor claim can read the checkpoint", async () => {
+  it("an instructor cannot read a student's checkpoint — not even their own class's", async () => {
+    const db = testEnv
+      .authenticatedContext(INSTRUCTOR, { instructor: true })
+      .firestore();
+    await assertFails(
+      getDoc(doc(db, "sessions", SID, "players", PID, "private", "checkpoint"))
+    );
+  });
+
+  it("owner cannot create a private doc under an arbitrary id", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertFails(
+      setDoc(doc(db, "sessions", SID, "players", PID, "private", "junk-1"), {
+        uid: STUDENT,
+        json: "x",
+      })
+    );
+  });
+
+  it("owner can write a round-2 result blob", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, "sessions", SID, "players", PID, "private", "result-2"), {
+        json: "{}",
+        uid: STUDENT,
+        savedAt: new Date(),
+      })
+    );
+  });
+
+  it("owner cannot add extra fields to a checkpoint", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertFails(
+      setDoc(doc(db, "sessions", SID, "players", PID, "private", "checkpoint"), {
+        engineVersion: 1,
+        seed: 12345,
+        tick: 99,
+        stateJSON: "{}",
+        savedAt: new Date(),
+        uid: STUDENT,
+        padding: "x".repeat(1000),
+      })
+    );
+  });
+});
+
+describe("listing and lookup collections", () => {
+  it("an anonymous user cannot list every session", async () => {
+    const db = testEnv.authenticatedContext(OTHER).firestore();
+    await assertFails(getDocs(collection(db, "sessions")));
+  });
+
+  it("an instructor can list their own sessions", async () => {
     const db = testEnv
       .authenticatedContext(INSTRUCTOR, { instructor: true })
       .firestore();
     await assertSucceeds(
-      getDoc(doc(db, "sessions", SID, "players", PID, "private", "checkpoint"))
+      getDocs(query(collection(db, "sessions"), where("instructorUid", "==", INSTRUCTOR)))
     );
+  });
+
+  it("an instructor cannot list another instructor's sessions", async () => {
+    const db = testEnv
+      .authenticatedContext("teach-2", { instructor: true })
+      .firestore();
+    await assertFails(
+      getDocs(query(collection(db, "sessions"), where("instructorUid", "==", INSTRUCTOR)))
+    );
+  });
+
+  it("join codes cannot be read or listed by clients", async () => {
+    const db = testEnv.authenticatedContext(OTHER).firestore();
+    await assertFails(getDoc(doc(db, "sessionCodes", CODE)));
+    await assertFails(getDocs(collection(db, "sessionCodes")));
+  });
+
+  it("name tickets cannot be read by clients", async () => {
+    const db = testEnv.authenticatedContext(STUDENT).firestore();
+    await assertFails(getDoc(doc(db, "sessions", SID, "names", "alice")));
   });
 });

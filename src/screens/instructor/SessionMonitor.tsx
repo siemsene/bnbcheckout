@@ -18,10 +18,7 @@ import { LeaderboardPanel } from '../student/LeaderboardPanel';
 import { ConstraintPanel } from './ConstraintPanel';
 import { subscribePlayers, type PlayerDoc } from '../../firebase/data';
 
-function ExportCsvButton({ sessionId }: { sessionId: string }) {
-  const [players, setPlayers] = useState<PlayerDoc[]>([]);
-  useEffect(() => subscribePlayers(sessionId, setPlayers), [sessionId]);
-
+function ExportCsvButton({ players }: { players: PlayerDoc[] }) {
   function exportCsv() {
     const rows = [
       ['name', 'phase', 'finished', 'finish_sim_minute', 'pct_complete', 'avg_utilization', 'score'],
@@ -35,7 +32,13 @@ function ExportCsvButton({ sessionId }: { sessionId: string }) {
         String(p.score),
       ]),
     ];
-    const csv = rows.map((r) => r.map((c) => `"${c.replaceAll('"', '""')}"`).join(',')).join('\n');
+    // Names are student-chosen: a leading = + - @ would run as a formula when
+    // the file is opened in Excel or Sheets, so neutralise it with a quote.
+    const cell = (c: string) => {
+      const safe = /^[=+\-@\t\r]/.test(c) ? `'${c}` : c;
+      return `"${safe.replaceAll('"', '""')}"`;
+    };
+    const csv = rows.map((r) => r.map(cell).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
     a.href = url;
@@ -55,6 +58,9 @@ export function SessionMonitor() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { user, isInstructor, init, loading } = useAuthStore();
   const [session, setSession] = useState<SessionDoc | null>(null);
+  const [sessionState, setSessionState] = useState<'loading' | 'ok' | 'missing' | 'error'>(
+    'loading',
+  );
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +74,16 @@ export function SessionMonitor() {
     if (!loading && (!user || !isInstructor)) navigate('/instructor/auth');
   }, [loading, user, isInstructor, navigate]);
   useEffect(() => {
-    if (sessionId) return subscribeSession(sessionId, setSession);
+    if (sessionId) {
+      return subscribeSession(
+        sessionId,
+        (s) => {
+          setSession(s);
+          setSessionState(s ? 'ok' : 'missing');
+        },
+        () => setSessionState('error'),
+      );
+    }
   }, [sessionId]);
   useEffect(() => {
     if (sessionId) return subscribePlayers(sessionId, setPlayers);
@@ -79,7 +94,24 @@ export function SessionMonitor() {
     return () => clearInterval(t);
   }, []);
 
-  if (!session || !user) return null;
+  if (!user || sessionState !== 'ok' || !session) {
+    const text =
+      !user || sessionState === 'loading'
+        ? 'Loading the session…'
+        : sessionState === 'missing'
+          ? 'This session doesn’t exist any more — it may have been deleted.'
+          : 'Could not load this session. Check that you own it, then reload.';
+    return (
+      <div className="card" style={{ maxWidth: 520, margin: '60px auto', textAlign: 'center' }}>
+        <p role={sessionState === 'loading' ? 'status' : 'alert'}>{text}</p>
+        {sessionState !== 'loading' && (
+          <Link to="/instructor" className="btn-link">
+            Back to your sessions
+          </Link>
+        )}
+      </div>
+    );
+  }
 
   const stage = stageOf(session, Date.now());
   // Each round counts down to its OWN start instant. This read run 1's
@@ -315,8 +347,12 @@ export function SessionMonitor() {
 
       <section className="panel" style={{ padding: 16 }}>
         <h2 style={{ marginBottom: 10 }}>Leaderboard</h2>
-        <LeaderboardPanel sessionId={session.id} revealScatter={stage === 'ended'} />
-        <ExportCsvButton sessionId={session.id} />
+        <LeaderboardPanel
+          sessionId={session.id}
+          players={players}
+          revealScatter={stage === 'ended'}
+        />
+        <ExportCsvButton players={players} />
       </section>
 
       <ConstraintPanel />

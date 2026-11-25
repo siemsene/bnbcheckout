@@ -3,6 +3,7 @@
 import { CHARACTERS, CHAR_IDS } from '../../engine/content';
 import { CHAR_META } from '../../content/charMeta';
 import { useSimStore } from '../../state/simStore';
+import { useDialog } from '../../hooks/useDialog';
 
 export function Lobby({
   canBegin = true,
@@ -13,11 +14,12 @@ export function Lobby({
   waitingMessage?: string;
 }) {
   const beginPlanning = useSimStore((s) => s.beginPlanning);
+  const { dialogProps, titleProps } = useDialog();
 
   return (
     <div className="overlay">
-      <div className="overlay-card">
-        <h1>Checkout Rush</h1>
+      <div className="overlay-card" {...dialogProps}>
+        <h1 {...titleProps}>Checkout Rush</h1>
         <p style={{ color: 'var(--ink-soft)' }}>
           It’s 8:00 AM. Checkout is at 10:00 AM sharp. Five friends, one Airbnb,
           twenty-two things to do. You are <strong>Sora</strong> — get your team

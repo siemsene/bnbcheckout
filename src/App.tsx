@@ -53,7 +53,7 @@ function Landing() {
     >
       <section className="hero">
         <img
-          src="/assets/brand/hero-house.jpg"
+          src="/assets/brand/hero-house.webp"
           alt="A cosy countryside cottage at eight in the morning, two cars on the gravel driveway and luggage waiting by the open front door"
         />
         <div className="hero-body">
@@ -63,13 +63,17 @@ function Landing() {
             the hard way, and find out what parallel actually costs.
           </p>
           <div className="hero-cta">
-            <Link to="/join">
-              <button className="btn-big" disabled={!firebaseEnabled}>
+            {firebaseEnabled ? (
+              <Link to="/join" className="btn-link btn-big">
                 Join a class session
-              </button>
-            </Link>
-            <Link to="/play">
-              <button className="btn-big btn-ghost">Try a practice run</button>
+              </Link>
+            ) : (
+              <span className="btn-link btn-big" aria-disabled="true">
+                Join a class session
+              </span>
+            )}
+            <Link to="/play" className="btn-link btn-big btn-ghost">
+              Try a practice run
             </Link>
           </div>
           {!firebaseEnabled && (
@@ -103,11 +107,15 @@ function Landing() {
           </p>
         </div>
         <div className="signup-band-cta">
-          <Link to={REGISTER_PATH}>
-            <button className="btn-big" disabled={!firebaseEnabled}>
+          {firebaseEnabled ? (
+            <Link to={REGISTER_PATH} className="btn-link btn-big">
               Register as an instructor
-            </button>
-          </Link>
+            </Link>
+          ) : (
+            <span className="btn-link btn-big" aria-disabled="true">
+              Register as an instructor
+            </span>
+          )}
           {firebaseEnabled ? (
             <span>
               Already have an account? <Link to="/instructor">Sign in</Link>
@@ -119,6 +127,28 @@ function Landing() {
           )}
         </div>
       </section>
+    </Shell>
+  );
+}
+
+function NotFound() {
+  return (
+    <Shell>
+      <div className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
+        <h1 style={{ marginTop: 0 }}>Page not found</h1>
+        <p style={{ color: 'var(--ink-soft)' }}>
+          That link doesn’t lead anywhere. Students join with a code from the
+          classroom screen.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Link to="/join" className="btn-link">
+            Join a session
+          </Link>
+          <Link to="/" className="btn-link btn-ghost">
+            Home
+          </Link>
+        </div>
+      </div>
     </Shell>
   );
 }
@@ -136,6 +166,7 @@ export default function App() {
         <Route path="/instructor/session/:sessionId" element={<SessionMonitor />} />
         <Route path="/admin" element={<AdminApprovals />} />
         <Route path="/admin/usage" element={<AdminUsage />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   );

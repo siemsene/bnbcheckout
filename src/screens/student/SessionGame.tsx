@@ -5,7 +5,7 @@
 // out which stage the room is in, and keep the sim store in step with it.
 
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { setSimSpeed, useSimStore } from '../../state/simStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { useRoomStage } from '../../state/useRoomStage';
@@ -27,6 +27,8 @@ import { LeaderboardPanel } from './LeaderboardPanel';
 import { CountdownOverlay, SessionPlanningBar } from '../../components/hud/PlanningBar';
 import { PlanBoard } from '../../components/plan/PlanBoard';
 import { runWallClockMs } from '../../state/simStore';
+import { useDialog } from '../../hooks/useDialog';
+import type { PlayerDoc } from '../../firebase/data';
 
 /**
  * Resolve once the session doc has actually arrived, or after a short grace
@@ -65,6 +67,9 @@ export function SessionGame() {
   const sim = useSimStore((s) => s.sim);
 
   const [booted, setBooted] = useState(false);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const sessionGone = useSessionStore((s) => s.sessionGone);
+  const setRosterWanted = useSessionStore((s) => s.setRosterWanted);
   const [showBoard, setShowBoard] = useState(false);
   // Run 1's summary, fetched once the replay is over so the debrief can put the
   // two runs side by side. The sim state for run 1 is long gone by then.
@@ -82,26 +87,39 @@ export function SessionGame() {
     let cancelled = false;
     let stopWatch: (() => void) | undefined;
     (async () => {
-      const uid = await ensureAnonAuth();
-      if (cancelled) return;
-      useSessionStore.setState({ uid });
-      stopWatch = watchSession(id.sessionId);
-      // Don't block the boot on this: an uncorrected clock is only wrong by
-      // this machine's own skew, and planning lasts minutes.
-      void useSessionStore.getState().syncClock();
-      // But DO wait for the session doc. `watchSession` only opens the
-      // subscription; reading the store straight after it gives null, and
-      // `stageOf(null)` is 'lobby' — which in a two-run session means a refresh
-      // during run 2 restores run 1's checkpoint and silently rewinds the
-      // student a whole round.
-      await firstSnapshot();
-      if (cancelled) return;
-      const stage = stageOf(useSessionStore.getState().session, Date.now());
-      const resumed = await useSessionStore.getState().resumeFromCheckpoint(stage);
-      if (cancelled) return;
-      if (!resumed) useSimStore.getState().newGame(id.seed);
-      useSimStore.getState().setPauseAllowed(false); // the room shares one clock
-      setBooted(true);
+      try {
+        const uid = await ensureAnonAuth();
+        if (cancelled) return;
+        useSessionStore.setState({ uid });
+        stopWatch = watchSession(id.sessionId);
+        // Don't block the boot on this: an uncorrected clock is only wrong by
+        // this machine's own skew, and planning lasts minutes.
+        void useSessionStore.getState().syncClock();
+        // But DO wait for the session doc. `watchSession` only opens the
+        // subscription; reading the store straight after it gives null, and
+        // `stageOf(null)` is 'lobby' — which in a two-run session means a refresh
+        // during run 2 restores run 1's checkpoint and silently rewinds the
+        // student a whole round.
+        await firstSnapshot();
+        if (cancelled) return;
+        const stage = stageOf(useSessionStore.getState().session, Date.now());
+        const resumed = await useSessionStore.getState().resumeFromCheckpoint(stage);
+        if (cancelled) return;
+        if (!resumed) useSimStore.getState().newGame(id.seed);
+        useSimStore.getState().setPauseAllowed(false); // the room shares one clock
+        setBooted(true);
+      } catch (e) {
+        // Without this the page stayed blank: `booted` never flipped and the
+        // render below returns nothing. ensureAnonAuth throws on purpose when
+        // an instructor is signed in to this tab, and the network can fail too.
+        if (cancelled) return;
+        console.error('[checkout-rush] could not join the room', e);
+        setBootError(
+          e instanceof Error && e.message
+            ? e.message
+            : 'Could not connect to your class session.',
+        );
+      }
     })();
     return () => {
       cancelled = true;
@@ -114,6 +132,14 @@ export function SessionGame() {
     if (!booted) return;
     return attachReporting();
   }, [booted, attachReporting]);
+
+  // Only listen to the whole roster when this screen shows something from it.
+  // Mid-run it shows nothing, and a roster listener on every student's tab is
+  // what made reads grow with the square of the class.
+  useEffect(() => {
+    setRosterWanted(phase !== 'running');
+  }, [phase, setRosterWanted]);
+  useEffect(() => () => setRosterWanted(true), [setRosterWanted]);
 
   // Sim speed is the session's, not whatever /play?speed= last left behind.
   useEffect(() => {
@@ -247,13 +273,31 @@ export function SessionGame() {
   const lastPlanSave = useRef(0);
   useEffect(() => {
     if (!booted || (room.stage !== 'planning' && room.stage !== 'plan2')) return;
+    // Rate-limited, but trailing: an edit inside the 15 s window is saved when
+    // the window closes. This used to return early instead, so the last edit
+    // before a refresh was simply lost.
+    const since = Date.now() - lastPlanSave.current;
     const t = setTimeout(() => {
-      if (Date.now() - lastPlanSave.current < 15_000) return;
+      lastPlanSave.current = Date.now();
+      useSessionStore.getState().checkpointNow();
+    }, Math.max(3000, 15_000 - since));
+    return () => clearTimeout(t);
+  }, [booted, room.stage, version]);
+
+  // The run-2 plan board edits `sim.plan` in place without bumping `version`
+  // (see onDraft), so the effect above never saw those edits. Debounce a save
+  // from the draft callback itself.
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+  }, []);
+  function scheduleDraftSave() {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(() => {
       lastPlanSave.current = Date.now();
       useSessionStore.getState().checkpointNow();
     }, 3000);
-    return () => clearTimeout(t);
-  }, [booted, room.stage, version]);
+  }
 
   useEffect(() => {
     const id = identity;
@@ -261,10 +305,55 @@ export function SessionGame() {
     // Nothing to compare against when run 1 was skipped; the debrief simply
     // drops its "did planning help?" half.
     if (!ranRoundOne(room.session)) return;
-    void loadResult(id.sessionId, id.playerId, 1).then((r) => r && setRun1(r));
+    void loadResult(id.sessionId, id.playerId, 1)
+      .then((r) => r && setRun1(r))
+      .catch((e) => console.error('[checkout-rush] could not load run 1', e));
   }, [identity, room.round, phase, run1, room.session]);
 
-  if (!booted || !sim) return null;
+  if (sessionGone) {
+    return (
+      <div className="overlay" style={{ background: 'var(--bg)' }}>
+        <div className="overlay-card" role="alert">
+          <h1>This session is no longer available</h1>
+          <p style={{ color: 'var(--ink-soft)' }}>
+            Your instructor may have deleted it. Ask for the current join code.
+          </p>
+          <Link
+            to="/join"
+            className="btn-link btn-big"
+            onClick={() => useSessionStore.getState().leave()}
+          >
+            Join another session
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  if (bootError) {
+    return (
+      <div className="overlay" style={{ background: 'var(--bg)' }}>
+        <div className="overlay-card" role="alert">
+          <h1>Couldn't get you into the room</h1>
+          <p style={{ color: 'var(--ink-soft)' }}>{bootError}</p>
+          <Link
+            to="/join"
+            className="btn-link btn-big"
+          >
+            Back to join
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  if (!booted || !sim) {
+    return (
+      <div className="overlay" style={{ background: 'var(--bg)' }}>
+        <div className="overlay-card" role="status">
+          <h1>Connecting to your class…</h1>
+        </div>
+      </div>
+    );
+  }
 
   const id = identity ?? restore();
   if (!id) return null;
@@ -326,6 +415,7 @@ export function SessionGame() {
             // starts, so no render needs to know.
             const s = useSimStore.getState().sim;
             if (s) s.plan = draft;
+            scheduleDraftSave();
           }}
           onCommit={(committedPlan) => {
             // Commit before telling the room: markReady forces a checkpoint, and
@@ -358,24 +448,43 @@ export function SessionGame() {
         />
       )}
       {showResults && showBoard && (
-        <div className="overlay">
-          <div className="overlay-card" style={{ maxWidth: 760 }}>
-            <h1>Class leaderboard</h1>
-            <LeaderboardPanel
-              sessionId={id.sessionId}
-              highlightPlayerId={id.playerId}
-              revealScatter
-            />
-            <button
-              className="btn-ghost"
-              onClick={() => setShowBoard(false)}
-              style={{ marginTop: 14 }}
-            >
-              ← Back to my results
-            </button>
-          </div>
-        </div>
+        <ClassBoardOverlay
+          sessionId={id.sessionId}
+          playerId={id.playerId}
+          players={room.players}
+          onBack={() => setShowBoard(false)}
+        />
       )}
     </>
+  );
+}
+
+function ClassBoardOverlay({
+  sessionId,
+  playerId,
+  players,
+  onBack,
+}: {
+  sessionId: string;
+  playerId: string;
+  players: PlayerDoc[];
+  onBack: () => void;
+}) {
+  const { dialogProps, titleProps } = useDialog();
+  return (
+    <div className="overlay">
+      <div className="overlay-card" style={{ maxWidth: 760 }} {...dialogProps}>
+        <h1 {...titleProps}>Class leaderboard</h1>
+        <LeaderboardPanel
+          sessionId={sessionId}
+          players={players}
+          highlightPlayerId={playerId}
+          revealScatter
+        />
+        <button className="btn-ghost" onClick={onBack} style={{ marginTop: 14 }}>
+          ← Back to my results
+        </button>
+      </div>
+    </div>
   );
 }

@@ -239,7 +239,13 @@ export function AdminUsage() {
   const pricing = PRICING[pricingId];
   const built = useMemo(() => (data ? buildRows(data, pricing) : null), [data, pricing]);
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <Centered>
+        <p role="status">Checking your sign-in…</p>
+      </Centered>
+    );
+  }
   if (!user) {
     return (
       <Centered>

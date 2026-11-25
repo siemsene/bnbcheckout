@@ -14,6 +14,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { checkPlan, emptyPlan } from '../../engine/planCheck';
 import { projectPlan } from '../../engine/project';
 import { PlanGantt } from './PlanGantt';
+import { formatCountdown } from '../../state/useRoomStage';
+import { useDialog } from '../../hooks/useDialog';
 import { NetworkDiagram } from '../charts/NetworkDiagram';
 import type { Plan } from '../../engine/types';
 
@@ -93,15 +95,16 @@ export function PlanBoard({
 
 
 
-  const mins = Math.floor(msUntilStart / 60000);
-  const secs = Math.ceil((msUntilStart % 60000) / 1000);
+  // Rounding the minutes and seconds separately could show "3:60".
+  const countdown = formatCountdown(msUntilStart);
+  const { dialogProps, titleProps } = useDialog();
 
   return (
     <div className="overlay">
-      <div className="overlay-card plan-card">
+      <div className="overlay-card plan-card" {...dialogProps}>
         <div className="plan-head">
           <div>
-            <h1 style={{ margin: 0 }}>Plan the second run</h1>
+            <h1 style={{ margin: 0 }} {...titleProps}>Plan the second run</h1>
             <p style={{ margin: '4px 0 0', color: 'var(--ink-soft)' }}>
               You have met the team and found the constraints the hard way. Now
               decide who does what, in what order — then watch it play out.
@@ -110,7 +113,7 @@ export function PlanBoard({
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-              {mins}:{String(secs).padStart(2, '0')}
+              {countdown}
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--ink-soft)' }}>
               {readyCount} of {playerCount} ready

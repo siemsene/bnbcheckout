@@ -80,7 +80,10 @@ export function HUD() {
             : 'Turn walking and work animations off'
         }
       >
-        {reduced ? '✨ Animations off' : '✨ Animations on'}
+        {/* A fixed accessible name, with the state carried by aria-pressed.
+            Changing the label as well read as "Animations off, not pressed". */}
+        <span aria-hidden="true">{reduced ? '✨ Animations off' : '✨ Animations on'}</span>
+        <span className="sr-only">Animations</span>
       </button>
       {pauseAllowed && phase === 'running' && (
         <button onClick={() => setPaused(!paused)} aria-pressed={paused}>

@@ -31,7 +31,7 @@ export function JoinScreen() {
             <input
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="e.g. TULIP7"
+              placeholder="e.g. K7MPQ2"
               maxLength={6}
               required
               style={inputStyle}

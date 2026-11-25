@@ -52,14 +52,14 @@ const FX_SPEC: Record<
   // Placed off to the side of each room's character anchor, on the floor line,
   // so a prop never lands on top of the friends standing there.
   cat: {
-    src: '/assets/scene/cat.png',
+    src: '/assets/scene/cat.webp',
     alt: 'A cat has wandered into the living room',
     left: 13,
     top: 87,
     width: 9,
   },
   'shopping-list': {
-    src: '/assets/scene/shopping-list.png',
+    src: '/assets/scene/shopping-list.webp',
     alt: 'The missing shopping list turned up under the sofa',
     left: 32,
     top: 86,
@@ -198,7 +198,7 @@ export function HouseScene() {
     <section className="panel scene-wrap" aria-label="House view">
       <img
         className="scene-bg"
-        src="/assets/scene/house-cutaway.jpg"
+        src="/assets/scene/house-cutaway.webp"
         alt="Cutaway view of the Airbnb: three bedrooms and a bathroom upstairs; living room, hall and kitchen downstairs; driveway in front"
       />
 
@@ -210,7 +210,7 @@ export function HouseScene() {
           <img
             key={taskId}
             className="scene-clean"
-            src="/assets/scene/house-clean.jpg"
+            src="/assets/scene/house-clean.webp"
             alt=""
             aria-hidden
             style={{
@@ -239,33 +239,33 @@ export function HouseScene() {
 
       {/* driveway props — car-specific luggage */}
       {done('fetch-car-a') && (
-        <img className="scene-prop" src="/assets/scene/car-a.png" alt="Car A in the driveway"
+        <img className="scene-prop" src="/assets/scene/car-a.webp" alt="Car A in the driveway"
           style={{ left: '55%', bottom: '0.5%', width: '13%' }} />
       )}
       {done('fetch-car-b') && (
-        <img className="scene-prop" src="/assets/scene/car-b.png" alt="Car B in the driveway"
+        <img className="scene-prop" src="/assets/scene/car-b.webp" alt="Car B in the driveway"
           style={{ left: '74%', bottom: '0.5%', width: '13%' }} />
       )}
       {done('load-car-a') && (
-        <img className="scene-prop" src="/assets/scene/luggage-pile.png" alt="Luggage loaded on car A"
+        <img className="scene-prop" src="/assets/scene/luggage-pile.webp" alt="Luggage loaded on car A"
           style={{ left: '58%', bottom: '7%', width: '5.5%' }} />
       )}
       {done('load-car-b') && (
-        <img className="scene-prop" src="/assets/scene/luggage-pile.png" alt="Luggage loaded on car B"
+        <img className="scene-prop" src="/assets/scene/luggage-pile.webp" alt="Luggage loaded on car B"
           style={{ left: '77%', bottom: '7%', width: '5.5%' }} />
       )}
       {(['pack-bag-1', 'pack-bag-2'] as const).filter((b) => done(b) && !done('load-car-a')).map((b, i) => (
-        <img key={b} className="scene-prop" src="/assets/scene/luggage-pile.png"
+        <img key={b} className="scene-prop" src="/assets/scene/luggage-pile.webp"
           alt="Packed luggage waiting in the hall"
           style={{ left: `${43 + i * 4}%`, top: '80%', width: '4.5%' }} />
       ))}
       {done('pack-bag-3') && !done('load-car-b') && (
-        <img className="scene-prop" src="/assets/scene/luggage-pile.png"
+        <img className="scene-prop" src="/assets/scene/luggage-pile.webp"
           alt="Packed luggage waiting in the hall"
           style={{ left: '51%', top: '80%', width: '4.5%' }} />
       )}
       {done('garbage') && (
-        <img className="scene-prop" src="/assets/scene/garbage.png" alt="Garbage out at the curb"
+        <img className="scene-prop" src="/assets/scene/garbage.webp" alt="Garbage out at the curb"
           style={{ left: '3%', bottom: '1%', width: '7%' }} />
       )}
 

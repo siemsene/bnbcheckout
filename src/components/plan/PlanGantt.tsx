@@ -405,6 +405,22 @@ function Row({
         }`}
         onClick={() => picked && onPickDrop()}
         title={why ?? undefined}
+        // Click-to-place was mouse-only. With a job picked, the lane is a
+        // button for the keyboard too (TaskCard follows the same pattern).
+        role={picked ? 'button' : undefined}
+        tabIndex={picked ? 0 : undefined}
+        aria-label={
+          picked
+            ? `${CHARACTERS[charId].name}'s lane${why ? ` — ${why}` : ' — press Enter to place here'}`
+            : undefined
+        }
+        aria-disabled={picked && !allowed ? true : undefined}
+        onKeyDown={(e) => {
+          if (picked && e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            onPickDrop();
+          }
+        }}
       >
         {/* The key is per-lane: `Row` reconciles inside its own lane, so the
             same job appearing in several lanes is several separate scopes. */}

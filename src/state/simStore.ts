@@ -158,6 +158,10 @@ export const useSimStore = create<SimStore>((set, get) => ({
       version: 0,
       phase: 'lobby',
       paused: false,
+      // A class session turns pause off and nothing turned it back on, so a
+      // practice run started after one had no Pause button. Session code calls
+      // setPauseAllowed(false) after newGame, so this default is safe there.
+      pauseAllowed: true,
       bubbles: [],
   sceneFx: [],
       ticker: [],

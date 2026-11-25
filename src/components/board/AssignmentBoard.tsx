@@ -36,19 +36,31 @@ export function AssignmentBoard() {
     done: TASKS.filter((t) => sim.tasks[t.id].status === 'done'),
   };
 
+  const canUnassign = !!(selected && sim.chars[selected].taskId);
+
   return (
     <section className="panel board" aria-label="Assignment chart">
       <div
         ref={setNodeRef}
         className="board-roster"
         style={
-          isOver || (selected && sim.chars[selected].taskId)
+          isOver || canUnassign
             ? { outline: '2px dashed var(--accent)' }
             : undefined
         }
         aria-label="Unassigned friends — drop here (or click while a friend is selected) to unassign"
+        // Keyboard users had no way to unassign short of a keyboard drag. When
+        // an assigned friend is selected, the roster becomes a button.
+        role={canUnassign ? 'button' : undefined}
+        tabIndex={canUnassign ? 0 : undefined}
         onClick={(e) => {
           if (e.target === e.currentTarget) unassignSelected();
+        }}
+        onKeyDown={(e) => {
+          if (canUnassign && e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            unassignSelected();
+          }
         }}
       >
         {unassigned.length === 0 && (

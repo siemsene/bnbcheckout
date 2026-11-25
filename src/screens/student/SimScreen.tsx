@@ -42,9 +42,14 @@ export function SimScreen({ planningBar }: { planningBar?: React.ReactNode }) {
 
   return (
     <div className="sim-layout">
-      <HUD />
-      {phase === 'planning' &&
-        (planningBar ?? <PracticePlanningBar onStart={startClock} />)}
+      {/* One grid row for the whole header. The layout has two row tracks
+          (header, board); with the planning bar as a third child the board
+          fell into an implicit auto row and overflowed the viewport. */}
+      <div className="sim-head">
+        <HUD />
+        {phase === 'planning' &&
+          (planningBar ?? <PracticePlanningBar onStart={startClock} />)}
+      </div>
       <div className="sim-main">
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
           <AssignmentBoard />

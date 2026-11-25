@@ -7,6 +7,7 @@
  * modular entry points (getFirestore / getAuth) rather than admin.firestore()
  * and admin.auth().
  */
+import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -22,6 +23,18 @@ import {
 } from "firebase-admin/firestore";
 
 initializeApp();
+
+// Cost guard. Anonymous sign-in is open to anyone, so the callables are too;
+// without a cap a scripted caller could scale each function to the default 100
+// instances. A full class needs one or two.
+setGlobalOptions({ maxInstances: 5 });
+
+// App Check: every callable refuses requests that don't carry a valid token
+// from the real site (reCAPTCHA v3 attestation), so a script holding the public
+// web config can't drive joinSession/createSession by itself. Off under the
+// emulator, where the client skips App Check and no token exists.
+const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== "true";
+const CALL = { enforceAppCheck: ENFORCE_APP_CHECK } as const;
 
 const db = getFirestore();
 
@@ -264,7 +277,7 @@ export const onInstructorRegistered = onDocumentCreated(
 // 2. approveInstructor — admin approves or rejects a pending instructor.
 // ---------------------------------------------------------------------------
 export const approveInstructor = onCall(
-  { secrets: [SMTP2GO_API_KEY] },
+  { ...CALL, secrets: [SMTP2GO_API_KEY] },
   async (request) => {
   if (request.auth?.token?.admin !== true) {
     throw new HttpsError("permission-denied", "Admin privileges required.");
@@ -295,6 +308,10 @@ export const approveInstructor = onCall(
     delete claims.instructor;
   }
   await getAuth().setCustomUserClaims(uid, claims);
+  // A claim change only reaches the user's ID token on its next refresh, up to
+  // an hour away. On a rejection that hour is an hour of instructor access, so
+  // force the refresh by revoking their refresh tokens (signs them out).
+  if (!approve) await getAuth().revokeRefreshTokens(uid);
 
   await userRef.update({
     status: approve ? "approved" : "rejected",
@@ -323,7 +340,7 @@ export const approveInstructor = onCall(
 // ---------------------------------------------------------------------------
 // 3. setAdminClaim — self-service bootstrap for the single known admin.
 // ---------------------------------------------------------------------------
-export const setAdminClaim = onCall(async (request) => {
+export const setAdminClaim = onCall(CALL, async (request) => {
   const token = request.auth?.token;
   if (!request.auth || !token) {
     throw new HttpsError("unauthenticated", "Sign in first.");
@@ -354,7 +371,7 @@ function randomCode(): string {
   return code;
 }
 
-export const createSession = onCall(async (request) => {
+export const createSession = onCall(CALL, async (request) => {
   if (request.auth?.token?.instructor !== true) {
     throw new HttpsError("permission-denied", "Instructor privileges required.");
   }
@@ -362,6 +379,12 @@ export const createSession = onCall(async (request) => {
   const title = request.data?.title;
   if (typeof title !== "string" || title.trim().length === 0) {
     throw new HttpsError("invalid-argument", "Expected { title: string }.");
+  }
+  if (title.trim().length > MAX_TITLE_LENGTH) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Session titles are at most ${MAX_TITLE_LENGTH} characters.`
+    );
   }
 
   const rawPlanning = request.data?.planningMinutes;
@@ -431,6 +454,8 @@ export const createSession = onCall(async (request) => {
   );
 });
 
+const MAX_TITLE_LENGTH = 80;
+
 class CodeCollisionError extends Error {
   constructor() {
     super("session code collision");
@@ -451,7 +476,30 @@ function fnv1a32(str: string): number {
   return hash >>> 0;
 }
 
-export const joinSession = onCall(async (request) => {
+/** How long a running player must be silent before another browser may take over. */
+const TAKEOVER_STALE_MS = 60_000;
+
+/** Trim, drop control and zero-width characters, collapse inner whitespace. */
+function cleanDisplayName(raw: string): string {
+  return raw
+    .replace(/[\p{Cc}\p{Cf}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Why a cleaned display name is unacceptable, or null if it is fine. Mirrored
+ * in the client's JoinScreen so students see the reason before submitting.
+ */
+function displayNameProblem(name: string): string | null {
+  if (name.length < 2 || name.length > 20) return "Name must be 2-20 characters.";
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}\p{M} .'_-]*$/u.test(name)) {
+    return "Use letters, numbers, spaces and - ' . _ only, starting with a letter or number.";
+  }
+  return null;
+}
+
+export const joinSession = onCall(CALL, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Sign in (anonymous is fine) first.");
   }
@@ -463,10 +511,13 @@ export const joinSession = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "Expected { code: string, name: string }.");
   }
 
-  const name = rawName.trim();
-  if (name.length < 2 || name.length > 20) {
-    throw new HttpsError("invalid-argument", "Name must be 2-20 characters.");
+  const name = cleanDisplayName(rawName);
+  const nameProblem = displayNameProblem(name);
+  if (nameProblem) {
+    throw new HttpsError("invalid-argument", nameProblem);
   }
+  // The lowercased name is a document id below, which is why the character set
+  // is restricted: a "/" in it used to throw an opaque internal error.
   const nameLower = name.toLowerCase();
   const codeUpper = code.trim().toUpperCase();
 
@@ -511,7 +562,23 @@ export const joinSession = onCall(async (request) => {
       if (!playerSnap.exists) {
         throw new HttpsError("internal", "Player record missing for name ticket.");
       }
-      const seed = playerSnap.data()!.seed as number;
+      const player = playerSnap.data()!;
+      const seed = player.seed as number;
+
+      // A different browser taking over a slot that is mid-run and still
+      // reporting is a classmate hijacking it, not a student switching
+      // devices: a closed or crashed tab stops writing, and after
+      // TAKEOVER_STALE_MS its slot can be reclaimed again.
+      if (player.uid !== uid && player.phase === "running") {
+        const lastWriteMs = millis(player.lastWriteAt);
+        if (lastWriteMs != null && Date.now() - lastWriteMs < TAKEOVER_STALE_MS) {
+          throw new HttpsError(
+            "already-exists",
+            "That name is in use right now. Pick another, or wait a minute " +
+              "if this is you on a new device."
+          );
+        }
+      }
 
       tx.update(nameRef, { uid });
       tx.update(playerRef, { uid });
@@ -578,7 +645,7 @@ export const joinSession = onCall(async (request) => {
  * last-student-ready race safe: two simultaneous calls cannot both observe
  * "not everyone is ready yet" and leave the run unstarted.
  */
-export const markReady = onCall(async (request) => {
+export const markReady = onCall(CALL, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Sign in (anonymous is fine) first.");
   }
@@ -696,7 +763,7 @@ export const markReady = onCall(async (request) => {
  * skewed instructor clock would otherwise be baked into the one timestamp every
  * student derives their stage and sim-clock from.
  */
-export const sessionControl = onCall(async (request) => {
+export const sessionControl = onCall(CALL, async (request) => {
   if (request.auth?.token?.instructor !== true) {
     throw new HttpsError("permission-denied", "Instructor privileges required.");
   }
@@ -862,7 +929,7 @@ export const sessionControl = onCall(async (request) => {
 // 5d. getServerTime — lets a client correct its own clock skew.
 // ---------------------------------------------------------------------------
 
-export const getServerTime = onCall(async (request) => {
+export const getServerTime = onCall(CALL, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Sign in first.");
   }
@@ -872,7 +939,7 @@ export const getServerTime = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // 6. deleteSession — an instructor removes one of their own old sessions.
 // ---------------------------------------------------------------------------
-export const deleteSession = onCall(async (request) => {
+export const deleteSession = onCall(CALL, async (request) => {
   if (request.auth?.token?.instructor !== true) {
     throw new HttpsError("permission-denied", "Instructor privileges required.");
   }
@@ -1083,7 +1150,7 @@ async function archiveSessionUsage(
 // ---------------------------------------------------------------------------
 // 7b. usageStats — admin-only roll-up: live sessions plus the lifetime archive.
 // ---------------------------------------------------------------------------
-export const usageStats = onCall(async (request) => {
+export const usageStats = onCall(CALL, async (request) => {
   if (request.auth?.token?.admin !== true) {
     throw new HttpsError("permission-denied", "Admin privileges required.");
   }

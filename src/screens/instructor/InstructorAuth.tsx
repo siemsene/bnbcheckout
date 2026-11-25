@@ -19,6 +19,8 @@ export function InstructorAuth() {
   const [registered, setRegistered] = useState(false);
   const [resent, setResent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checkMsg, setCheckMsg] = useState<string | null>(null);
   const navigate = useNavigate();
   const {
     user,
@@ -99,36 +101,74 @@ export function InstructorAuth() {
             {!user.emailVerified ? (
               <>
                 <button
+                  disabled={checking}
                   onClick={async () => {
-                    await reloadUser();
-                    if (!useAuthStore.getState().user?.emailVerified) return;
-                    await refreshClaims();
-                    window.location.reload();
+                    setChecking(true);
+                    setCheckMsg(null);
+                    try {
+                      await reloadUser();
+                      if (!useAuthStore.getState().user?.emailVerified) {
+                        // Used to return silently, which read as a dead button.
+                        setCheckMsg(
+                          'Not verified yet. Open the link in the email, then try again.',
+                        );
+                        return;
+                      }
+                      await refreshClaims();
+                      window.location.reload();
+                    } catch (e) {
+                      setCheckMsg(e instanceof Error && e.message ? e.message : 'Something went wrong — try again.');
+                    } finally {
+                      setChecking(false);
+                    }
                   }}
                 >
-                  I’ve clicked the link — check again
+                  {checking ? 'Checking…' : 'I’ve clicked the link — check again'}
                 </button>
                 <button
                   className="btn-ghost"
                   disabled={busy}
                   onClick={async () => {
                     setBusy(true);
-                    setResent(await resendVerification());
-                    setBusy(false);
+                    try {
+                      setResent(await resendVerification());
+                    } catch (e) {
+                      setCheckMsg(e instanceof Error && e.message ? e.message : 'Something went wrong — try again.');
+                    } finally {
+                      setBusy(false);
+                    }
                   }}
                 >
                   {busy ? 'Sending…' : 'Resend verification email'}
                 </button>
               </>
             ) : (
-              <button onClick={() => refreshClaims().then(() => window.location.reload())}>
-                I’ve been approved — refresh
+              <button
+                disabled={checking}
+                onClick={async () => {
+                  setChecking(true);
+                  setCheckMsg(null);
+                  try {
+                    await refreshClaims();
+                    window.location.reload();
+                  } catch (e) {
+                    setCheckMsg(e instanceof Error && e.message ? e.message : 'Something went wrong — try again.');
+                    setChecking(false);
+                  }
+                }}
+              >
+                {checking ? 'Checking…' : 'I’ve been approved — refresh'}
               </button>
             )}
             <button className="btn-ghost" onClick={() => logout()}>
               Sign out
             </button>
           </div>
+          {checkMsg && (
+            <p role="alert" style={{ color: 'var(--danger)', fontWeight: 600, marginTop: 12 }}>
+              {checkMsg}
+            </p>
+          )}
         </div>
       </div>
     );

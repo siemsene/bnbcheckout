@@ -9,14 +9,25 @@ export function LeaderboardPanel({
   sessionId,
   highlightPlayerId,
   revealScatter,
+  players: given,
 }: {
   sessionId: string;
   highlightPlayerId?: string;
   revealScatter?: boolean;
+  /**
+   * The roster, when the parent already listens to it. Passing it keeps one
+   * listener per screen; without it the panel subscribes on its own.
+   */
+  players?: PlayerDoc[];
 }) {
-  const [players, setPlayers] = useState<PlayerDoc[]>([]);
+  const [own, setOwn] = useState<PlayerDoc[]>([]);
 
-  useEffect(() => subscribePlayers(sessionId, setPlayers), [sessionId]);
+  useEffect(() => {
+    if (given) return;
+    return subscribePlayers(sessionId, setOwn);
+  }, [sessionId, given == null]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const players = given ?? own;
 
   const ranked = [...players].sort((a, b) => b.score - a.score);
   const winnersCut = ranked.filter((p) => p.finished).slice(0, 3).map((p) => p.id);

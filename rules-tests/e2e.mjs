@@ -374,6 +374,36 @@ async function main() {
     "permission-denied"
   );
 
+  // ------------------------------------------------------------- Step 7.5
+  console.log("--- Step 7.5: names and slot takeover ---");
+  await expectError(
+    "a name containing '/' is rejected cleanly",
+    () => joinSession1({ code, name: "a/b" }),
+    "invalid-argument"
+  );
+  await expectError(
+    "a name that is only punctuation is rejected",
+    () => joinSession1({ code, name: ".." }),
+    "invalid-argument"
+  );
+  // student2 owns TestKid and has just written progress while running, so
+  // another browser claiming the name is a hijack, not a device switch.
+  await expectError(
+    "a different browser cannot take over a live running player",
+    () => joinSession1({ code, name: "TestKid" }),
+    "already-exists"
+  );
+  // Once the slot has gone quiet (a closed or crashed tab), it can be reclaimed.
+  await updateDoc(ownerPlayerRef, { lastWriteAt: new Date(Date.now() - 120_000) });
+  const reclaim = await joinSession1({ code, name: "TestKid" });
+  check("a stale running slot can be reclaimed from a new browser",
+    reclaim.data?.rejoined === true && reclaim.data?.playerId === playerId);
+  // Hand it back to student2 (still stale) so the steps below keep their owner.
+  const giveBack = await joinSession2({ code, name: "TestKid" });
+  check("and handed back while still stale", giveBack.data?.playerId === playerId);
+  const kidSelfRejoin = await joinSession2({ code, name: "TestKid" });
+  check("the owner's own rejoin always works", kidSelfRejoin.data?.rejoined === true);
+
   // ---------------------------------------------------------------- Step 8
   console.log("--- Step 8: checkpoint ---");
   const checkpointPath = [...playerPath, "private", "checkpoint"];
@@ -394,8 +424,13 @@ async function main() {
     "permission-denied"
   );
 
-  const cpInstr = await getDoc(doc(instrCtx.db, ...checkpointPath));
-  check("instructor checkpoint read allowed", cpInstr.exists());
+  // No instructor screen reads private docs, and the old rule let ANY
+  // instructor read any class's — so the clause is gone.
+  await expectError(
+    "instructor checkpoint read denied",
+    () => getDoc(doc(instrCtx.db, ...checkpointPath)),
+    "permission-denied"
+  );
 
   // ---------------------------------------------------------------- Step 8.5
   console.log("--- Step 8.5: reaching run 2 without waiting out run 1 ---");
@@ -593,8 +628,12 @@ async function main() {
   check("players subcollection removed too", leftoverPlayers.empty);
 
   // The join code is freed, so it can be handed out again.
-  const codeDoc = await getDoc(doc(instrCtx.db, "sessionCodes", code));
-  check("join code released", !codeDoc.exists());
+  // sessionCodes is closed to clients now, so check through the callable.
+  await expectError(
+    "join code released",
+    () => joinLate({ code, name: "AfterDelete" }),
+    "not-found"
+  );
 
   const delAgain = await deleteSession({ sessionId });
   check("deleting again is a no-op, not an error", delAgain.data?.alreadyGone === true);

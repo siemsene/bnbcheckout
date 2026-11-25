@@ -15,6 +15,7 @@ import {
   getFirestore,
   type Firestore,
 } from 'firebase/firestore';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import {
   connectFunctionsEmulator,
   getFunctions,
@@ -31,6 +32,9 @@ const config = {
     | undefined,
   appId: import.meta.env.VITE_FIREBASE_APP_ID as string | undefined,
 };
+
+/** Public reCAPTCHA v3 site key for App Check. */
+const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
 
 export const firebaseEnabled = Boolean(config.apiKey && config.projectId);
 
@@ -77,6 +81,19 @@ function ensureApp(): FirebaseApp {
   if (!firebaseEnabled) throw new Error('Firebase is not configured (VITE_FIREBASE_*)');
   if (!app) {
     app = initializeApp(config as Record<string, string>);
+
+    // App Check must start before any other service makes a request, so it
+    // lives here at the single point of construction. The callables enforce
+    // it; the emulators don't, so dev against them skips it entirely.
+    // reCAPTCHA v3 is invisible: no challenge is ever shown to a student.
+    const usingEmulators =
+      import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === '1';
+    if (recaptchaSiteKey && !usingEmulators) {
+      initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(recaptchaSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+    }
 
     // Auth is constructed here, before anything can reach for it, because
     // initializeAuth() throws if the app already has an Auth instance — so the

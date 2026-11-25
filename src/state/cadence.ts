@@ -8,7 +8,7 @@
 // Firebase into a Node test run.
 
 /** Gap between leaderboard progress writes during a run. */
-export const PROGRESS_INTERVAL_MS = 10_000;
+export const PROGRESS_INTERVAL_MS = 15_000;
 
 /** Gap between full checkpoint saves during a run. */
 export const CHECKPOINT_INTERVAL_MS = 60_000;

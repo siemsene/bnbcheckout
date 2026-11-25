@@ -19,6 +19,8 @@ export function AdminApprovals() {
   const [busy, setBusy] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   // Bumped to re-attach the listener after a denied read; see below.
   const [retry, setRetry] = useState(0);
 
@@ -26,10 +28,25 @@ export function AdminApprovals() {
   useEffect(() => {
     if (!isAdmin) return;
     setListError(null);
-    return subscribeInstructors(setUsers, (e) => setListError(e.message));
+    return subscribeInstructors(
+      (list) => {
+        setUsers(list);
+        setLoaded(true);
+      },
+      (e) => {
+        setLoaded(true);
+        setListError(e.message);
+      },
+    );
   }, [isAdmin, retry]);
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <Centered>
+        <p role="status">Checking your sign-in…</p>
+      </Centered>
+    );
+  }
   if (!user) {
     return (
       <Centered>
@@ -114,7 +131,17 @@ export function AdminApprovals() {
           {pending.length}
         </span>
       </h2>
+      {actionError && (
+        <p role="alert" className="card" style={{ color: 'var(--danger)', marginBottom: 10 }}>
+          {actionError}
+        </p>
+      )}
       <div style={{ display: 'grid', gap: 10, marginBottom: 28 }}>
+        {!loaded && !listError && (
+          <p className="card" role="status" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
+            Loading registrations…
+          </p>
+        )}
         {pending.map((u) => (
           <div key={u.uid} className="card card-row">
             <div style={{ flex: 1, minWidth: 180 }}>
@@ -126,7 +153,14 @@ export function AdminApprovals() {
               disabled={busy === u.uid}
               onClick={async () => {
                 setBusy(u.uid);
-                await approveInstructor(u.uid, true).finally(() => setBusy(null));
+                setActionError(null);
+                try {
+                  await approveInstructor(u.uid, true);
+                } catch (e) {
+                  setActionError(e instanceof Error && e.message ? e.message : 'Something went wrong — try again.');
+                } finally {
+                  setBusy(null);
+                }
               }}
             >
               {busy === u.uid ? 'Working…' : '✓ Approve'}
@@ -136,14 +170,21 @@ export function AdminApprovals() {
               disabled={busy === u.uid}
               onClick={async () => {
                 setBusy(u.uid);
-                await approveInstructor(u.uid, false).finally(() => setBusy(null));
+                setActionError(null);
+                try {
+                  await approveInstructor(u.uid, false);
+                } catch (e) {
+                  setActionError(e instanceof Error && e.message ? e.message : 'Something went wrong — try again.');
+                } finally {
+                  setBusy(null);
+                }
               }}
             >
               Reject
             </button>
           </div>
         ))}
-        {pending.length === 0 && (
+        {loaded && !listError && pending.length === 0 && (
           <div className="card" style={{ textAlign: 'center', padding: '30px 20px' }}>
             <div style={{ fontSize: '1.8rem' }} aria-hidden>
               ✅

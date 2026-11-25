@@ -27,6 +27,7 @@ import {
 } from '../firebase/callables';
 import { firebaseEnabled } from '../firebase/client';
 import { CHECKPOINT_INTERVAL_MS, PROGRESS_INTERVAL_MS } from './cadence';
+import { cleanDisplayName, displayNameProblem } from '../content/displayName';
 import { useSimStore, type GamePhase } from './simStore';
 
 const STORAGE_KEY = 'checkout-rush-session';
@@ -47,6 +48,12 @@ interface SessionStore {
 
   /** Live session doc + roster, so stage logic has one source of truth. */
   session: SessionDoc | null;
+  /**
+   * The session doc existed and then vanished (the instructor deleted it), or
+   * it could not be read at all. Without this the student sat on "Waiting for
+   * your instructor" forever, because a missing doc derives as 'lobby'.
+   */
+  sessionGone: boolean;
   players: PlayerDoc[];
   /** serverNow - clientNow, from the last callable. Corrects a skewed clock. */
   serverOffsetMs: number;
@@ -60,8 +67,16 @@ interface SessionStore {
   restore(): StoredIdentity | null;
   leave(): void;
 
-  /** Subscribe to the session doc and roster. Returns cleanup. */
+  /** Subscribe to the session doc (and the roster while wanted). Returns cleanup. */
   watchSession(sessionId: string): () => void;
+  /**
+   * Attach or detach the whole-roster listener. Every progress write by every
+   * student is delivered to every attached roster listener, so keeping one
+   * open on each student's tab during the run made reads grow with the square
+   * of the class. A student mid-run never looks at the roster, so it is
+   * detached then and re-attached for the lobby, planning and results.
+   */
+  setRosterWanted(wanted: boolean): void;
   /** Server-corrected wall clock. */
   now(): number;
   /** Re-measure the server clock offset (used on resume). */
@@ -95,6 +110,30 @@ interface SessionStore {
 }
 
 let lastProgressAt = 0;
+let watchedSessionId: string | null = null;
+let rosterWanted = true;
+let stopRoster: (() => void) | null = null;
+
+function syncRoster(
+  set: (p: Partial<SessionStore>) => void,
+  get: () => SessionStore,
+): void {
+  const want = rosterWanted && watchedSessionId != null;
+  if (want && !stopRoster) {
+    stopRoster = subscribePlayers(watchedSessionId!, (players) => {
+      const playerId = get().identity?.playerId;
+      const me = players.find((p) => p.id === playerId);
+      // The server's flag is the truth once a snapshot lands. Only an
+      // in-flight markReady keeps the optimistic value: OR-ing the old local
+      // flag in (as this used to) meant a student stayed "ready" into run 2
+      // after openPlan2 had cleared it server-side.
+      set({ players, ready: get().readyPending ? true : me?.ready === true });
+    });
+  } else if (!want && stopRoster) {
+    stopRoster();
+    stopRoster = null;
+  }
+}
 let lastCheckpointAt = 0;
 let lastPhase: GamePhase | null = null;
 
@@ -104,6 +143,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   joining: false,
   error: null,
   session: null,
+  sessionGone: false,
   players: [],
   serverOffsetMs: 0,
   ready: false,
@@ -115,14 +155,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       set({ error: 'Class sessions are not configured on this deployment.' });
       return false;
     }
+    const cleanName = cleanDisplayName(name);
+    const problem = displayNameProblem(cleanName);
+    if (problem) {
+      set({ error: problem });
+      return false;
+    }
     set({ joining: true, error: null });
     try {
       const uid = await ensureAnonAuth();
-      const res = await joinSession(code.trim().toUpperCase(), name);
+      const res = await joinSession(code.trim().toUpperCase(), cleanName);
       const identity: StoredIdentity = {
         sessionId: res.sessionId,
         playerId: res.playerId,
-        name: name.trim(),
+        name: cleanName,
         code: code.trim().toUpperCase(),
         seed: res.seed,
       };
@@ -135,12 +181,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       });
       return true;
     } catch (e) {
+      // The callable's messages are written for students already. (This used
+      // to rewrite anything matching /already/ as "name taken", which turned
+      // "the simulation has already started" into a misleading answer.)
       const msg =
-        e instanceof Error && /already|taken/i.test(e.message)
-          ? 'That name is taken in this session — pick another.'
-          : e instanceof Error
-            ? e.message
-            : 'Could not join the session.';
+        e instanceof Error && e.message && e.message !== 'internal'
+          ? e.message
+          : 'Could not join the session. Check the code and try again.';
       set({ error: msg, joining: false });
       return false;
     }
@@ -160,21 +207,35 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   leave() {
     localStorage.removeItem(STORAGE_KEY);
-    set({ identity: null, session: null, players: [], ready: false });
+    set({ identity: null, session: null, sessionGone: false, players: [], ready: false });
   },
 
   watchSession(sessionId) {
-    const stopSession = subscribeSession(sessionId, (session) => set({ session }));
-    const stopPlayers = subscribePlayers(sessionId, (players) => {
-      const playerId = get().identity?.playerId;
-      const me = players.find((p) => p.id === playerId);
-      // The server's flag wins once it lands; until then keep the optimistic one.
-      set({ players, ready: me?.ready === true || get().ready });
-    });
+    let seen = false;
+    set({ sessionGone: false });
+    const stopSession = subscribeSession(
+      sessionId,
+      (session, fromServer) => {
+        if (session) seen = true;
+        // Gone means the server says so: either the doc existed and vanished,
+        // or the server answered that it does not exist (a stored identity for
+        // a session deleted since). A cache-only miss is just being offline.
+        set({ session, sessionGone: session == null && (seen || fromServer) });
+      },
+      () => set({ sessionGone: true }),
+    );
+    watchedSessionId = sessionId;
+    syncRoster(set, get);
     return () => {
       stopSession();
-      stopPlayers();
+      watchedSessionId = null;
+      syncRoster(set, get);
     };
+  },
+
+  setRosterWanted(wanted) {
+    rosterWanted = wanted;
+    syncRoster(set, get);
   },
 
   now() {
@@ -260,8 +321,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       if (sim.outcome !== 'running') {
         void saveResult(
           identity.sessionId, identity.playerId, uid, summarize(sim), sim.round,
-        ).catch(
-        );
+        ).catch((e) => console.error('[checkout-rush] could not save the result', e));
       }
     };
 

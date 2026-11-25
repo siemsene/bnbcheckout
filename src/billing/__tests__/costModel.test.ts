@@ -30,9 +30,9 @@ describe('sessionLines', () => {
     const lines = sessionLines(CLASS_OF_30);
     const by = (k: string) => lines.find((l) => l.key === k)!;
 
-    // A 120-minute run at 8x is 900 real seconds: 90 progress intervals plus
-    // the write at t=0, and 15 checkpoint intervals plus the one at t=0.
-    expect(by('progress').units).toBe(30 * 91);
+    // A 120-minute run at 8x is 900 real seconds: 60 progress intervals (15 s)
+    // plus the write at t=0, and 15 checkpoint intervals plus the one at t=0.
+    expect(by('progress').units).toBe(30 * 61);
     expect(by('checkpoint').units).toBe(30 * 16);
     expect(by('result').units).toBe(30 * 1 + 2);
   });

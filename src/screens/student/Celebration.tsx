@@ -14,7 +14,7 @@ export function Celebration() {
 
   useEffect(() => {
     if (reduced) return;
-    const t = setTimeout(() => setGone(true), 4200);
+    const t = setTimeout(() => setGone(true), 5600);
     return () => clearTimeout(t);
   }, [reduced]);
 

@@ -8,6 +8,7 @@ import { summarize } from '../../engine/scoring';
 import { useSimStore } from '../../state/simStore';
 import { LeaderboardPanel } from './LeaderboardPanel';
 import { formatCountdown } from '../../state/useRoomStage';
+import { useDialog } from '../../hooks/useDialog';
 
 export function WaitingRoom({
   sessionId,
@@ -23,14 +24,15 @@ export function WaitingRoom({
   msUntilRunOver: number;
 }) {
   const sim = useSimStore((s) => s.sim);
+  const { dialogProps, titleProps } = useDialog();
   if (!sim) return null;
   const r = summarize(sim);
   const finished = r.outcome === 'finished';
 
   return (
     <div className="overlay">
-      <div className="overlay-card" style={{ maxWidth: 760 }}>
-        <h1>{finished ? '✅ You’re done!' : '⏰ Time’s up for you'}</h1>
+      <div className="overlay-card" style={{ maxWidth: 760 }} {...dialogProps}>
+        <h1 {...titleProps}>{finished ? '✅ You’re done!' : '⏰ Time’s up for you'}</h1>
         <p style={{ fontSize: '1.05rem' }}>
           {finished ? (
             <>
@@ -49,7 +51,14 @@ export function WaitingRoom({
           )}
         </p>
 
-        <p className="panel" style={{ padding: '12px 16px' }} role="status">
+        {/* The live region carries only the head-count. The countdown used to
+            sit inside it too, so screen readers re-announced it every second. */}
+        <span className="sr-only" role="status">
+          {remaining > 0
+            ? `Waiting for ${remaining} ${remaining === 1 ? 'classmate' : 'classmates'} to finish.`
+            : 'Everyone has finished.'}
+        </span>
+        <p className="panel" style={{ padding: '12px 16px' }}>
           {remaining > 0 ? (
             <>
               Waiting for <strong>{remaining}</strong>{' '}

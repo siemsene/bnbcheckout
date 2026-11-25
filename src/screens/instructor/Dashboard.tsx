@@ -129,6 +129,14 @@ function Minutes({
 export function Dashboard() {
   const { user, isInstructor, isAdmin, init, loading, logout } = useAuthStore();
   const [sessions, setSessions] = useState<SessionDoc[]>([]);
+  // null until the first snapshot, so the list can say "Loading" instead of
+  // flashing "No sessions yet" (and the open form) at every instructor.
+  const [loaded, setLoaded] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  // Stage badges are derived from the clock, so re-render steadily; without
+  // this a badge stayed on "planning" long after the run had started.
+  const [, tick] = useState(0);
   const [title, setTitle] = useState('');
   const [planningMinutes, setPlanningMinutes] = useState(DEFAULT_PLANNING_MINUTES);
   // Two-run is opt-in. A plain single run stays the default, so nothing about
@@ -154,12 +162,37 @@ export function Dashboard() {
     if (!loading && (!user || !isInstructor)) navigate('/instructor/auth');
   }, [loading, user, isInstructor, navigate]);
   useEffect(() => {
-    if (user && isInstructor) return subscribeMySessions(user.uid, setSessions);
+    if (user && isInstructor) {
+      return subscribeMySessions(
+        user.uid,
+        (list) => {
+          setSessions(list);
+          setLoaded(true);
+          setListError(null);
+        },
+        () => {
+          setLoaded(true);
+          setListError('Could not load your sessions. Reload the page to try again.');
+        },
+      );
+    }
   }, [user, isInstructor]);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 5000);
+    return () => clearInterval(t);
+  }, []);
 
-  if (!user || !isInstructor) return null;
+  if (!user || !isInstructor) {
+    return (
+      <Shell>
+        <p className="card" role="status" style={{ textAlign: 'center' }}>
+          Checking your sign-in…
+        </p>
+      </Shell>
+    );
+  }
 
-  const showForm = formOpen || sessions.length === 0;
+  const showForm = formOpen || (loaded && sessions.length === 0);
 
   return (
     <Shell
@@ -196,7 +229,9 @@ export function Dashboard() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
+              if (creating) return;
               setCreating(true);
+              setCreateError(null);
               try {
                 const res = await createSession(title || 'Class session', {
                   planningMinutes: clampMinutes(planningMinutes),
@@ -206,6 +241,14 @@ export function Dashboard() {
                     : {}),
                 });
                 navigate(`/instructor/session/${res.sessionId}`);
+              } catch (err) {
+                // This used to be try/finally only: a failed create just reset
+                // the button, and the instructor had no idea why nothing happened.
+                setCreateError(
+                  err instanceof Error && err.message && err.message !== 'internal'
+                    ? err.message
+                    : 'Could not create the session. Check your connection and try again.',
+                );
               } finally {
                 setCreating(false);
               }
@@ -216,6 +259,7 @@ export function Dashboard() {
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                maxLength={80}
                 placeholder="e.g. MGT 340 — Tuesday"
               />
             </label>
@@ -302,6 +346,11 @@ export function Dashboard() {
               early from the monitor whenever the class is ready.
             </p>
 
+            {createError && (
+              <p role="alert" style={{ color: 'var(--danger)', fontWeight: 600 }}>
+                {createError}
+              </p>
+            )}
             <div className="setup-foot">
               {sessions.length > 0 && (
                 <button
@@ -328,6 +377,11 @@ export function Dashboard() {
         </button>
       )}
 
+      {listError && (
+        <p role="alert" className="card" style={{ color: 'var(--danger)', marginBottom: 10 }}>
+          {listError}
+        </p>
+      )}
       {deleteError && (
         <p role="alert" className="card" style={{ color: 'var(--danger)', marginBottom: 10 }}>
           {deleteError}
@@ -401,7 +455,12 @@ export function Dashboard() {
             )}
           </div>
         ))}
-        {sessions.length === 0 && (
+        {!loaded && (
+          <p className="card" role="status" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
+            Loading your sessions…
+          </p>
+        )}
+        {loaded && !listError && sessions.length === 0 && (
           <div className="card" style={{ textAlign: 'center', padding: '34px 20px' }}>
             <div style={{ fontSize: '2rem' }} aria-hidden>
               🗝️

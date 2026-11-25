@@ -24,14 +24,20 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Join codes — resolved client-side for display only; written by functions.
+    // Join codes — resolved only by the joinSession function. Open to clients,
+    // this let any anonymous visitor list every live code and walk into any
+    // class; nothing in the client reads it.
     match /sessionCodes/{code} {
-      allow read: if signedIn();
-      allow write: if false;
+      allow read, write: if false;
     }
 
     match /sessions/{sid} {
-      allow read: if signedIn();
+      // A student reads their own session by id. Listing is for the owning
+      // instructor's dashboard query (where instructorUid == uid) only — an
+      // open list handed every session id, and so every roster, to anyone.
+      allow get: if signedIn();
+      allow list: if isInstructor()
+        && resource.data.instructorUid == request.auth.uid;
       allow create: if isInstructor()
         && request.resource.data.instructorUid == request.auth.uid;
       // The owning instructor may edit their session, but NOT the run timing or
@@ -51,9 +57,9 @@ service cloud.firestore {
       allow delete: if false;
 
       // Name tickets — written only by the joinSession function.
+      // Never read by clients; they carry every player's uid.
       match /names/{nameLower} {
-        allow read: if signedIn();
-        allow write: if false;
+        allow read, write: if false;
       }
 
       match /players/{playerId} {
@@ -79,19 +85,52 @@ service cloud.firestore {
           && request.resource.data.get('round', 1) >= resource.data.get('round', 1)
           && (request.resource.data.get('round', 1) > resource.data.get('round', 1)
               || request.resource.data.simMinute >= resource.data.simMinute)
-          && request.resource.data.get('ready', false) == resource.data.get('ready', false);
+          && request.resource.data.get('ready', false) == resource.data.get('ready', false)
+          // Only the progress summary may change, and only with sane values.
+          // Without this an owner could write arbitrary (and arbitrarily large)
+          // fields onto a document every classmate's leaderboard downloads.
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'phase', 'round', 'simMinute', 'pctComplete', 'utilizationAvg',
+               'finished', 'finishSimMinute', 'score', 'lastWriteAt'])
+          && request.resource.data.phase in
+               ['lobby', 'planning', 'running', 'finished', 'abandoned']
+          && request.resource.data.get('round', 1) in [1, 2]
+          && request.resource.data.simMinute is number
+          && request.resource.data.simMinute >= 0
+          && request.resource.data.simMinute <= 1440
+          && request.resource.data.pctComplete is number
+          && request.resource.data.pctComplete >= 0
+          && request.resource.data.pctComplete <= 1
+          && request.resource.data.utilizationAvg is number
+          && request.resource.data.utilizationAvg >= 0
+          && request.resource.data.utilizationAvg <= 1
+          && request.resource.data.finished is bool
+          && request.resource.data.score is number
+          && (request.resource.data.finishSimMinute == null
+              || request.resource.data.finishSimMinute is number);
         allow delete: if false;
 
-        // Private per-player docs (checkpoint, result).
+        // Private per-player docs (checkpoint, result), one per round.
+        // Only the owning student reads them; no instructor screen does, and
+        // the old `|| isInstructor()` let ANY instructor read any class's.
+        // Doc ids and keys are fixed so a client cannot pile up storage.
         match /private/{doc} {
           function playerUid() {
             return get(/databases/$(database)/documents/sessions/$(sid)/players/$(playerId)).data.uid;
           }
-          allow read: if signedIn()
-            && (request.auth.uid == playerUid() || isInstructor());
+          allow read: if signedIn() && request.auth.uid == playerUid();
           allow create, update: if signedIn()
+            && doc in ['checkpoint', 'result', 'checkpoint-2', 'result-2']
             && request.auth.uid == playerUid()
-            && request.resource.data.uid == request.auth.uid;
+            && request.resource.data.uid == request.auth.uid
+            && (doc.matches('result.*')
+                ? request.resource.data.keys().hasOnly(['json', 'uid', 'savedAt'])
+                  && request.resource.data.json is string
+                  && request.resource.data.json.size() < 200000
+                : request.resource.data.keys().hasOnly(
+                    ['engineVersion', 'seed', 'round', 'tick', 'stateJSON',
+                     'uid', 'savedAt'])
+                  && request.resource.data.stateJSON is string);
           allow delete: if signedIn() && request.auth.uid == playerUid();
         }
       }

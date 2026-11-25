@@ -8,8 +8,10 @@
 //
 // The one result worth knowing before reading any of it: reads dominate, and
 // they grow with the SQUARE of the class size. Every progress write by one
-// student is delivered to every other student's leaderboard listener, so a
-// class of N costs roughly N² reads. Writes grow linearly and are nearly free.
+// student is delivered to every roster listener in the room. Students detach
+// theirs while their own run is going (see sessionStore.setRosterWanted), which
+// roughly halves the in-run term, but whoever has finished is listening again,
+// so the term stays quadratic. Writes grow linearly and are nearly free.
 //
 // Deliberately NOT modelled (all sit far inside the always-free tier at
 // classroom scale, and guessing at them would only add fake precision):
@@ -141,6 +143,12 @@ export function addOps(a: Ops, b: Ops): Ops {
   };
 }
 
+/**
+ * Share of the class holding a roster listener while a run is in progress:
+ * only students who have already finished. An average over the run.
+ */
+export const IN_RUN_LISTENING_SHARE = 0.5;
+
 /** One row of the "where the money goes" breakdown. */
 export interface CostLine {
   key: string;
@@ -168,6 +176,11 @@ export function sessionLines(s: SessionUsage): CostLine[] {
   // one lands. Using the full count here would roughly double a number that is
   // already a rounding error next to the in-run fan-out.
   const joinListeners = listeners / 2;
+  // Mid-run, a student's tab holds no roster listener until that student has
+  // finished. So a progress write reaches the instructor plus whoever is
+  // already in the waiting room. Finishes are spread across the run and most
+  // land late, so half the class listening on average errs upwards.
+  const runListeners = 1 + p * IN_RUN_LISTENING_SHARE;
 
   const windowSec = runWindowMsFor(s.simDeadlineMin, s.compression) / 1000;
   const progressPerPlayer =
@@ -189,9 +202,11 @@ export function sessionLines(s: SessionUsage): CostLine[] {
   // `private/` subcollections nobody else watches, which is exactly why they
   // are cheap. The room fills before it plays, so the creates are delivered to
   // a half-full room and everything after to a full one.
-  const attachReads = p * listeners;
+  // Once on joining, then again per run when a finished student's tab
+  // re-attaches to show the waiting room and results.
+  const attachReads = p * listeners + p * p * runs;
   const fanOutReads =
-    p * joinListeners + (p /* ready flags */ + progressWrites) * listeners;
+    p * joinListeners + p /* ready flags */ * listeners + progressWrites * runListeners;
   const sessionDocReads =
     p * joinListeners + (p + stageWrites) * listeners + listeners;
   const debriefReads = p * runs;
@@ -217,9 +232,10 @@ export function sessionLines(s: SessionUsage): CostLine[] {
       usd: 0,
       why:
         `Each of ${p} students writes progress every ` +
-        `${PROGRESS_INTERVAL_MS / 1000}s, and every write is delivered to all ` +
-        `${listeners} listeners. This is the quadratic term and almost always ` +
-        'the whole bill.',
+        `${PROGRESS_INTERVAL_MS / 1000}s, and every write is delivered to the ` +
+        `instructor plus the students already finished (about ` +
+        `${Math.round(runListeners)} listeners on average). This is the ` +
+        'quadratic term and almost always the whole bill.',
     },
     {
       key: 'attach',
@@ -227,7 +243,9 @@ export function sessionLines(s: SessionUsage): CostLine[] {
       unit: 'read',
       units: attachReads,
       usd: 0,
-      why: `${listeners} listeners each read the ${p}-player roster once on attach.`,
+      why:
+        `${listeners} listeners each read the ${p}-player roster on joining, and ` +
+        'each student reads it again after finishing a run.',
     },
     {
       key: 'sessiondoc',

@@ -10,6 +10,7 @@ import { UtilizationChart } from '../../components/charts/UtilizationChart';
 import { RunCompare } from '../../components/charts/RunCompare';
 import { VarianceTable } from '../../components/plan/VarianceTable';
 import { Celebration } from './Celebration';
+import { useDialog } from '../../hooks/useDialog';
 
 export function Results({
   onPlayAgain,
@@ -22,6 +23,7 @@ export function Results({
   previousRun?: ResultSummary | null;
 }) {
   const sim = useSimStore((s) => s.sim);
+  const { dialogProps, titleProps } = useDialog();
   if (!sim) return null;
   const r = summarize(sim);
   const finished = r.outcome === 'finished';
@@ -44,10 +46,10 @@ export function Results({
   return (
     <div className="overlay">
       {finished && <Celebration />}
-      <div className="overlay-card results-card">
+      <div className="overlay-card results-card" {...dialogProps}>
         {finished && (
           <img
-            src="/assets/scene/celebration.jpg"
+            src="/assets/scene/celebration.webp"
             alt="The five friends celebrating in front of the loaded car"
             style={{
               width: '100%',
@@ -57,7 +59,7 @@ export function Results({
             }}
           />
         )}
-        <h1>{finished ? '🎉 Checkout complete!' : '⏰ Time’s up!'}</h1>
+        <h1 {...titleProps}>{finished ? '🎉 Checkout complete!' : '⏰ Time’s up!'}</h1>
         <p style={{ fontSize: '1.1rem' }}>
           {finished ? (
             <>
