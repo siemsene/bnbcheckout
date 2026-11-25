@@ -30,7 +30,7 @@ initializeApp();
 setGlobalOptions({ maxInstances: 5 });
 
 // App Check: every callable refuses requests that don't carry a valid token
-// from the real site (reCAPTCHA v3 attestation), so a script holding the public
+// from the real site (reCAPTCHA Enterprise attestation), so a script holding the public
 // web config can't drive joinSession/createSession by itself. Off under the
 // emulator, where the client skips App Check and no token exists.
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== "true";
